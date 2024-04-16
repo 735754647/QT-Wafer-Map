@@ -2131,7 +2131,7 @@ void MapTest::handleTimeout()
     int startY =  ui->y_spinBox->text().toInt(); // Starting Y position
 
     // 目标字符向量
-    std::vector<std::string> targetChars = {" "};
+    std::vector<std::string> targetChars;
 
 
     for (int row = 0; row < ui->tableWidget->rowCount(); ++row)

@@ -69,7 +69,7 @@ void DrawingThread::run()
         }
     }
 
-    m_image.save("../chip.png", "PNG");	//输出图片
+    m_image.save("./chip.png", "PNG");	//输出图片
     m_mutex.unlock();
 
     // Signal that the image is ready

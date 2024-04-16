@@ -195,7 +195,7 @@ QImage FullImage(const QString &imagePath,double StartPoint, double EndPoint)
     }
 
     //保存为新图片
-    image.save("../chip.png");
+    image.save("./chip.png");
     return image;
 
 }
@@ -638,11 +638,6 @@ string getNewFilePath(string &filename)
 {
     int ROW,COLUMN;
 
-    //QTextCodec *code = QTextCodec::codecForName("GB2312");
-    //filename = code->fromUnicode(filename.c_str()).data();
-    strCoding cfm;
-    cfm.UTF_8ToGB2312(filename,(char *)filename.data(),strlen(filename.data()));
-
     std::ifstream file(filename); // 替换为您的文件路径
 
     if (file.is_open())
@@ -745,22 +740,15 @@ void MapTest::on_read_pushButton_clicked()
     }
 
 	m_mapData.clear();
-    filTexyename = QFileDialog::getOpenFileName(this, "打开晶元图", "../chip"/*, "Images(*.txt)"*/);
-    //string s = filTexyename.toLocal8Bit().toStdString();
+
+    filTexyename = QFileDialog::getOpenFileName(this, "打开晶元图", "./",tr("*")).toLocal8Bit().constData();
+
     std::string stdstr = QStringToStdString(filTexyename);
 
-    QString qstr = QString::fromLocal8Bit(getNewFilePath(stdstr).c_str());
-    //std::cout << qstr.toStdString() << std::endl;
-    stdstr=QStringToStdString(qstr);
-
-    QTextCodec *codec = QTextCodec::codecForName("UTF-8");
-
-    QString str = codec->toUnicode(getNewFilePath(stdstr).c_str());//2
-
-
-    filTexyename=QString::fromStdString(getNewFilePath(stdstr).c_str());
+    filTexyename=QString::fromLocal8Bit(getNewFilePath(stdstr).c_str()).toLocal8Bit().constData();
 
     ReadMapTxtFile();
+
     ui->label->setText(" 读取完成！! !");
 
 }
@@ -812,7 +800,6 @@ QPair<int, int> currenceLength(const QString &filePath, int &mostFrequentLength)
 //读txt
 void MapTest::ReadMapTxtFile()
 {
-
 	QFile file(filTexyename);
 	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
 		return;
@@ -1062,7 +1049,7 @@ void MapTest::Paint()
         ui->tableWidget->setEnabled(true);
 
         // Update UI with the generated image
-        QString	filename = "../chip.png";
+        QString	filename = "./chip.png";
 
         read_image(filename);
 
@@ -1338,8 +1325,8 @@ void MapTest::on_sure_pushButton_clicked()
               std::cout << "Cell is empty." << std::endl;
           }
 
-          fillImageRect("../chip.png",QRectF((RecordCurrent_x)*mapwidth/(double)map_columns,(RecordCurrent_y)*mapheight/(double)map_rows,mapheight/(double)map_columns,mapheight/(double)map_rows),Qt::white);
-          read_image("../chip.png");
+          fillImageRect("./chip.png",QRectF((RecordCurrent_x)*mapwidth/(double)map_columns,(RecordCurrent_y)*mapheight/(double)map_rows,mapheight/(double)map_columns,mapheight/(double)map_rows),Qt::white);
+          read_image("./chip.png");
 
       }
       else
@@ -1367,7 +1354,7 @@ void MapTest::on_rotate_clicked()
 	QMatrix matrix;
 	matrix.rotate(rodegrees);
 
-    ui->main_windows_label->setPixmap(QPixmap("../chip.png").transformed(matrix, Qt::SmoothTransformation));
+    ui->main_windows_label->setPixmap(QPixmap("./chip.png").transformed(matrix, Qt::SmoothTransformation));
 
 	if (rodegrees == 0)//正常矩阵
 	{

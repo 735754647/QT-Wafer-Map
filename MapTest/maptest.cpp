@@ -7,7 +7,8 @@
 #include <fstream>
 #include <filesystem>
 #include <regex>
-
+#include <algorithm>
+#include <unordered_set>
 MapTest::MapTest(QWidget* parent)
 	: QMainWindow(parent)
 	, ui(new Ui::MapTest)
@@ -738,7 +739,6 @@ void MapTest::on_read_pushButton_clicked()
         // Drawing is already in progress
         return;
     }
-
 	m_mapData.clear();
 
     filTexyename = QFileDialog::getOpenFileName(this, "打开晶元图", "./",tr("*")).toLocal8Bit().constData();
@@ -1073,11 +1073,11 @@ void MapTest::Paint_Secondary()
     {
         mylabel.UpdateRectangle();
 
-		QPainter painter(this);
-		QPixmap pixmap(ui->small_label->height(), ui->small_label->width());
-		painter.begin(&pixmap);
-
-		QPen pen = painter.pen();
+        QPixmap pixmap(ui->small_label->height(), ui->small_label->width());
+        QPainter painter(&pixmap);
+        //painter.begin(&pixmap);
+        pixmap.fill(Qt::white);
+        QPen pen = painter.pen();
         pen.setWidth(1);
 
         ui->x_pos_label->setText("X坐标：" + QString::number(RecordCurrent_x));
@@ -1100,6 +1100,18 @@ void MapTest::Paint_Secondary()
 
 
         int m_top = 0;
+
+        // 使用无序映射进行数据查找
+        std::unordered_map<std::string, QColor> colorMap;
+        for (int n = 0; n < ui->tableWidget->rowCount(); n++)
+        {
+            QString data = ui->tableWidget->model()->index(n, 1).data().toString();
+            std::string ch = data.toStdString();
+            QColor color = QColor(ui->tableWidget->model()->index(n, 4).data().toString());
+            colorMap[ch] = color;
+        }
+
+
         for (int y = startY; y <= startY + rectHeight; y++)
         {
             QMap<int, string> new_mapData;
@@ -1114,22 +1126,23 @@ void MapTest::Paint_Secondary()
             for (int x = startX; x <= startX + rectWidth; x++)
             {
                 string ASCII = new_mapData.value(x);
-
-                for (int n = 0; n < ui->tableWidget->rowCount(); n++)
+                // 从无序映射中查找颜色
+                auto iter = colorMap.find(ASCII);
+                //for (int n = 0; n < ui->tableWidget->rowCount(); n++)
                 {
-                    if (ASCII == ui->tableWidget->model()->index(n, 1).data().toString().toStdString())
+                    if (iter != colorMap.end())
                     {
                         QRect rect(m_left, m_top, cellSize, cellSize);
-                        painter.fillRect(rect, QColor(ui->tableWidget->model()->index(n, 4).data().toString()));
+                        painter.fillRect(rect, iter->second);
                         painter.setPen(Qt::black);
                         painter.drawText(rect, Qt::AlignCenter, QString::fromStdString(ASCII));
-                        break;
+                        //break;
                     }
                     else if (ASCII == " ")
                     {
                         QRect rect(m_left, m_top, cellSize, cellSize);
                         painter.fillRect(rect, Qt::white);
-                        break;
+                        //break;
                     }
                     else
                     {
@@ -1324,7 +1337,6 @@ void MapTest::on_sure_pushButton_clicked()
               // 单元格为空，没有项
               std::cout << "Cell is empty." << std::endl;
           }
-
           fillImageRect("./chip.png",QRectF((RecordCurrent_x)*mapwidth/(double)map_columns,(RecordCurrent_y)*mapheight/(double)map_rows,mapheight/(double)map_columns,mapheight/(double)map_rows),Qt::white);
           read_image("./chip.png");
 
@@ -1349,12 +1361,26 @@ void MapTest::on_rotate_clicked()
         return;
     }
 	if (m_mapData.isEmpty()) { return; }
-	if (rodegrees < 360) { rodegrees += 90; }
-	if (rodegrees == 360) { rodegrees = 0; }
-	QMatrix matrix;
-	matrix.rotate(rodegrees);
+    // 使用取模运算简化旋转角度的计算
 
-    ui->main_windows_label->setPixmap(QPixmap("./chip.png").transformed(matrix, Qt::SmoothTransformation));
+    // 调整旋转角度
+    rodegrees = (rodegrees + 90) % 360;
+    // 创建 QTransform 对象并设置旋转角度
+	QMatrix matrix;
+    matrix.rotate(90);
+
+    //ui->main_windows_label->setPixmap(QPixmap("./chip.png").transformed(matrix, Qt::SmoothTransformation));
+
+    // 应用变换
+    QPixmap transformedPixmap = QPixmap("./chip.png").transformed(matrix, Qt::SmoothTransformation);
+
+    // 设置到标签上并保存旋转后的图像
+    ui->main_windows_label->setPixmap(transformedPixmap);
+
+    // 保存旋转后的图像
+    if (!transformedPixmap.save("./chip.png")) {
+        qWarning() << "Failed to save image to ./chip.png";
+    }
 
 	if (rodegrees == 0)//正常矩阵
 	{
@@ -1367,6 +1393,12 @@ void MapTest::on_rotate_clicked()
 			}
 		}
         rectangleLabel.setRectangle(mapwidth/(double)map_columns*15,mapheight/(double)map_rows*15);
+
+        BigMapHorizontalslider->setRulerSliderRange(0,map_columns);//设置刻度范围
+        BigMapHorizontalslider->setRulerSliderValue(map_columns);//设置当前值
+
+        BigMapVerticalslider->setRulerSliderRange(0,map_rows);//设置刻度范围
+        BigMapVerticalslider->setRulerSliderValue(map_rows);//设置当前值
 	}
 
 	else if (rodegrees == 90)//顺时针旋转90度矩阵
@@ -1383,6 +1415,13 @@ void MapTest::on_rotate_clicked()
         ui->y_spinBox->setMaximum(map_columns - 1);
         rectangleLabel.setRectangle(mapwidth/(double)map_rows*15,mapheight/(double)map_columns*15);
 
+
+        BigMapHorizontalslider->setRulerSliderRange(0,map_rows);//设置刻度范围
+        BigMapHorizontalslider->setRulerSliderValue(map_rows);//设置当前值
+
+        BigMapVerticalslider->setRulerSliderRange(0,map_columns);//设置刻度范围
+        BigMapVerticalslider->setRulerSliderValue(map_columns);//设置当前值
+
 	}
 	else if (rodegrees == 180)//旋转180度矩阵
 	{
@@ -1397,6 +1436,12 @@ void MapTest::on_rotate_clicked()
         ui->x_spinBox->setMaximum(map_columns);
 		ui->y_spinBox->setMaximum(map_rows - 1);
         rectangleLabel.setRectangle(mapwidth/(double)map_columns*15,mapheight/(double)map_rows*15);
+
+        BigMapHorizontalslider->setRulerSliderRange(0,map_columns);//设置刻度范围
+        BigMapHorizontalslider->setRulerSliderValue(map_columns);//设置当前值
+
+        BigMapVerticalslider->setRulerSliderRange(0,map_rows);//设置刻度范围
+        BigMapVerticalslider->setRulerSliderValue(map_rows);//设置当前值
 	}
 
 	else if (rodegrees == 270)//旋转270度矩阵
@@ -1413,6 +1458,12 @@ void MapTest::on_rotate_clicked()
 		ui->x_spinBox->setMaximum(map_rows - 1);
         ui->y_spinBox->setMaximum(map_columns);
         rectangleLabel.setRectangle(mapwidth/(double)map_rows*15,mapheight/(double)map_columns*15);
+
+        BigMapHorizontalslider->setRulerSliderRange(0,map_rows);//设置刻度范围
+        BigMapHorizontalslider->setRulerSliderValue(map_rows);//设置当前值
+
+        BigMapVerticalslider->setRulerSliderRange(0,map_columns);//设置刻度范围
+        BigMapVerticalslider->setRulerSliderValue(map_columns);//设置当前值
 	}
 
 }
@@ -1746,17 +1797,17 @@ std::pair<int, std::vector<PathStep>> calculateShortestPath(const QMap<int, QMap
 //    return completePath;
 //}
 
-struct Node {
-    int x;
-    int y;
-};
+//struct Node {
+//    int x;
+//    int y;
+//};
 
-struct Point {
-    int x;
-    int y;
-    int steps; // 记录走过的步数
-    std::vector<Node> path; // 记录路径
-};
+//struct Point {
+//    int x;
+//    int y;
+//    int steps; // 记录走过的步数
+//    std::vector<Node> path; // 记录路径
+//};
 
 
 // 根据给定的方向在矩阵中搜索目标值，并返回找到的位置坐标，如果未找到则返回起始点坐标
@@ -2007,45 +2058,178 @@ std::pair<int, int> traverseSMatrix(const QMap<int, QMap<int, string>>& m_mapDat
     }
 }
 
-void findPaths(const QMap<int, QMap<int, string>>& m_mapData, const std::vector<string>& targetChars, int startX, int startY, std::vector<Point>& allPaths, std::vector<string>& unvisitedChars, std::vector<std::vector<bool>>& visited) {
-    int m = m_mapData.size();
-    int n = m_mapData.empty() ? 0 : m_mapData.values().first().size();
+//void findPaths(const QMap<int, QMap<int, string>>& m_mapData, const std::vector<string>& targetChars, int startX, int startY, std::vector<Point>& allPaths, std::vector<string>& unvisitedChars, std::vector<std::vector<bool>>& visited) {
+//    int m = m_mapData.size();
+//    int n = m_mapData.empty() ? 0 : m_mapData.values().first().size();
 
-    std::vector<Point> stack;
-    stack.push_back({startX, startY, 0, {}}); // 初始路径为空
+//    std::vector<Point> stack;
+//    stack.push_back({startX, startY, 0, {}}); // 初始路径为空
 
-    int dx[] = {0, 0, -1, 1};
-    int dy[] = {-1, 1, 0, 0};
+//    int dx[] = {0, 0, -1, 1};
+//    int dy[] = {-1, 1, 0, 0};
 
-    while (!stack.empty()) {
-        Point p = stack.back();
-        stack.pop_back();
+//    while (!stack.empty()) {
+//        Point p = stack.back();
+//        stack.pop_back();
 
-        if (std::find(targetChars.begin(), targetChars.end(), m_mapData[p.x][p.y]) != targetChars.end()) {
-            unvisitedChars.erase(std::remove(unvisitedChars.begin(), unvisitedChars.end(), m_mapData[p.x][p.y]), unvisitedChars.end()); // 到达目标字符，将其从未访问字符集合中移除
-            if (unvisitedChars.empty()) {
-                allPaths.push_back(p); // 所有目标字符均已访问，将路径添加到结果集合
-                continue; // 继续搜索其他路径
+//        if (std::find(targetChars.begin(), targetChars.end(), m_mapData[p.x][p.y]) != targetChars.end()) {
+//            unvisitedChars.erase(std::remove(unvisitedChars.begin(), unvisitedChars.end(), m_mapData[p.x][p.y]), unvisitedChars.end()); // 到达目标字符，将其从未访问字符集合中移除
+//            if (unvisitedChars.empty()) {
+//                allPaths.push_back(p); // 所有目标字符均已访问，将路径添加到结果集合
+//                continue; // 继续搜索其他路径
+//            }
+//        }
+
+//        for (int i = 0; i < 4; ++i) {
+//            int nx = p.x + dx[i];
+//            int ny = p.y + dy[i];
+
+//            if (nx >= 0 && nx < m && ny >= 0 && ny < n && !visited[nx][ny]) {
+//                std::vector<Node> newPath = p.path; // 复制路径
+//                newPath.push_back({nx, ny}); // 添加当前节点到路径
+//                stack.push_back({nx, ny, p.steps + 1, newPath});
+//                visited[nx][ny] = true;
+//            }
+//        }
+//    }
+//}
+
+
+
+//// 定义九宫格中的方向
+//int dx[] = {-1, 0, 1, 0};
+//int dy[] = {0, 1, 0, -1};
+
+// 定义九宫格中的点
+typedef pair<int, int> Point;
+
+//// 判断点是否在九宫格内
+//bool isValid(int x, int y, const QMap<int, QMap<int, string>>& m_mapData) {
+//    return m_mapData.contains(x) && m_mapData[x].contains(y);
+//}
+
+//// 使用BFS查找从起点到终点，并经过的障碍物数量最少的路径
+//vector<Point> bfs(QMap<int, QMap<int, string>>& m_mapData,  Point& start,  Point& end,  vector<string>& targetChars) {
+//    // 创建队列，并将起始节点添加到路径中
+//    queue<pair<vector<Point>, int>> q;
+//    q.push(make_pair(vector<Point>{start}, 0));
+
+//    // 记录已访问的位置
+//    QMap<int, QMap<int, bool>> visited;
+//    visited[start.first][start.second] = true;
+
+//    // 转换目标字符集为无序集合，以提高查找效率
+//    std::unordered_set<string> targetCharsSet(targetChars.begin(), targetChars.end());
+
+//    // 记录路径中的障碍物数量最少的路径
+//    vector<Point> minObstaclesPath;
+
+//    // BFS
+//    while (!q.empty()) {
+//        auto& front = q.front();
+//        auto& path = front.first;
+//        int numObstacles = front.second;
+//        q.pop();
+
+//        // 检查当前位置是否是终点
+//        if (!path.empty() && path.back() == end) {
+//            if (minObstaclesPath.empty() || numObstacles < minObstaclesPath.size() - 1) {
+//                minObstaclesPath = path;
+//            }
+//            continue;
+//        }
+
+//        // 遍历当前位置的四个方向
+//        for (int i = 0; i < 4; ++i) {
+//            int nx = (path.empty() ? start.first : path.back().first) + dx[i];
+//            int ny = (path.empty() ? start.second : path.back().second) + dy[i];
+
+//            // 如果下一个位置有效且未访问过
+//            if (isValid(nx, ny, m_mapData) && !visited[nx][ny]) {
+//                // 标记下一个位置已访问
+//                visited[nx][ny] = true;
+
+//                // 如果下一个位置是障碍物，增加障碍物数量
+//                vector<Point> nextPath = path;
+//                nextPath.push_back(make_pair(nx, ny));
+//                if (targetCharsSet.count(m_mapData[nx][ny])) {
+//                    q.push(make_pair(nextPath, numObstacles + 1));
+//                } else {
+//                    q.push(make_pair(nextPath, numObstacles));
+//                }
+//            }
+//        }
+//    }
+
+//    return minObstaclesPath;
+//}
+
+
+struct Node {
+    int x, y, distance;
+};
+
+vector<Node> bfs(const QMap<int, QMap<int, string>>& m_mapData, const Point& start, const Point& end, const vector<string>& targetChars) {
+    int maxColumns = m_mapData.size();
+    int maxRows = 0;
+
+    for (const auto& column : m_mapData) {
+        int rowCount = column.size();
+        if (rowCount > maxRows) {
+            maxRows = rowCount;
+        }
+    }
+
+    // 初始化标记数组，用于标记节点是否被访问过
+    QVector<QVector<bool>> visited(maxColumns, QVector<bool>(maxRows, false));
+
+    queue<Node> q;
+    q.push({start.first, start.second, 0});
+    visited[start.first][start.second] = true;
+
+    vector<Node> minObstaclesPath;
+
+    while (!q.empty()) {
+        Node currentNode = q.front();
+        q.pop();
+
+        // 如果当前节点是终点，更新最小障碍物路径
+        if (currentNode.x == end.first && currentNode.y == end.second) {
+            if (minObstaclesPath.empty() || currentNode.distance < minObstaclesPath.size() - 1) {
+                minObstaclesPath.push_back(currentNode);
             }
+            continue;
         }
 
-        for (int i = 0; i < 4; ++i) {
-            int nx = p.x + dx[i];
-            int ny = p.y + dy[i];
+        // 获取当前节点的邻居节点（上、下、左、右四个方向）
+        int dx[] = {0, 0, -1, 1};
+        int dy[] = {-1, 1, 0, 0};
 
-            if (nx >= 0 && nx < m && ny >= 0 && ny < n && !visited[nx][ny]) {
-                std::vector<Node> newPath = p.path; // 复制路径
-                newPath.push_back({nx, ny}); // 添加当前节点到路径
-                stack.push_back({nx, ny, p.steps + 1, newPath});
-                visited[nx][ny] = true;
+        for (int i = 0; i < 4; ++i) {
+            int nextX = currentNode.x + dx[i];
+            int nextY = currentNode.y + dy[i];
+
+            if (nextX >= 0 && nextX < maxColumns && nextY >= 0 && nextY < maxRows && !visited[nextX][nextY]) {
+                // 如果下一个位置是目标字符，增加障碍物数量
+                string nextChar = m_mapData[nextX][nextY];
+                if (find(targetChars.begin(), targetChars.end(), nextChar) != targetChars.end()) {
+                    q.push({nextX, nextY, currentNode.distance + 1});
+                } else {
+                    q.push({nextX, nextY, currentNode.distance});
+                }
+                visited[nextX][nextY] = true;
             }
         }
     }
+
+    return minObstaclesPath;
 }
+
 
 //开始
 void MapTest::on_start_pushButton_clicked()
 {
+
     on_sure_pushButton_clicked();
     m_pTimer->start(1);
 
@@ -2131,7 +2315,7 @@ void MapTest::handleTimeout()
     int startY =  ui->y_spinBox->text().toInt(); // Starting Y position
 
     // 目标字符向量
-    std::vector<std::string> targetChars = {" "};
+    std::vector<std::string> targetChars;
 
 
     for (int row = 0; row < ui->tableWidget->rowCount(); ++row)
@@ -2159,6 +2343,25 @@ void MapTest::handleTimeout()
     {
         m_pTimer->stop();
         qDebug() << "没有找到目标字符的路径。";
+    }
+
+    // 定义起点和终点
+    //Point start =m ake_pair(startX, startY);
+
+    Point start = make_pair(startY, startX);
+
+    // 求从起点到终点，经过的障碍物数量最少的路径
+    vector<Node> minObstaclesPath = bfs(m_mapData, start, result, targetChars);
+
+
+    // 输出结果
+    if (minObstaclesPath.empty()) {
+        qDebug() << "无法到达终点";
+    } else {
+        qDebug() << "经过障碍物数量最少的路径：";
+        for (const auto& point : minObstaclesPath) {
+            qDebug() << point.x << ", " << point.y;
+        }
     }
 
     ui->x_spinBox->setValue(result.second);

@@ -56,19 +56,22 @@ void DrawingThread::run()
         {
             std::string ch = m_mapData[i][j];
 
-            // 从无序映射中查找颜色
-            auto iter = colorMap.find(ch);
-            if (iter != colorMap.end())
+            //if(tempmapData.size()==0||tempmapData[i][j]!=m_mapData[i][j])
             {
-                painter.fillRect(QRectF(j * m_width, i * m_height, m_width, m_height), iter->second);
-            }
-            else
-            {
-                painter.fillRect(QRectF(j * m_width, i * m_height, m_width, m_height), Qt::white);
+                // 从无序映射中查找颜色
+                auto iter = colorMap.find(ch);
+                if (iter != colorMap.end())
+                {
+                    painter.fillRect(QRectF(j * m_width, i * m_height, m_width, m_height), iter->second);
+                }
+                else
+                {
+                    painter.fillRect(QRectF(j * m_width, i * m_height, m_width, m_height), Qt::white);
+                }
             }
         }
     }
-
+    //tempmapData=m_mapData;
     m_image.save("./chip.png", "PNG");	//输出图片
     m_mutex.unlock();
 

@@ -25,6 +25,7 @@ signals:
 
 private:
     QMap<int, QMap<int, std::string>> m_mapData;
+    QMap<int, QMap<int, std::string>> tempmapData;
     QTableWidget* m_tableWidget;
     double m_width;
     double m_height;

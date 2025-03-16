@@ -1337,8 +1337,29 @@ void MapTest::on_sure_pushButton_clicked()
               // 单元格为空，没有项
               std::cout << "Cell is empty." << std::endl;
           }
-          fillImageRect("./chip.png",QRectF((RecordCurrent_x)*mapwidth/(double)map_columns,(RecordCurrent_y)*mapheight/(double)map_rows,mapheight/(double)map_columns,mapheight/(double)map_rows),Qt::white);
-          read_image("./chip.png");
+          //fillImageRect("./chip.png",QRectF((RecordCurrent_x)*mapwidth/(double)map_columns,(RecordCurrent_y)*mapheight/(double)map_rows,mapheight/(double)map_columns,mapheight/(double)map_rows),Qt::white);
+          //read_image("./chip.png");
+
+          // 获取标签原图并复制
+          QPixmap pixmap = ui->main_windows_label->pixmap() ?
+                           ui->main_windows_label->pixmap()->copy() :
+                           QPixmap(ui->main_windows_label->size());
+
+          double cellWidth = mapwidth / (double)map_columns;
+          double cellHeight = mapheight / (double)map_rows;
+
+          QRectF updateRect(
+              RecordCurrent_x * cellWidth,
+              RecordCurrent_y * cellHeight,
+              cellWidth,
+              cellHeight
+          );
+
+          QPainter painter(&pixmap);
+          painter.fillRect(updateRect, Qt::white);  // 仅填充目标区域
+          painter.end();
+
+          ui->main_windows_label->setPixmap(pixmap);
 
       }
       else
@@ -2307,6 +2328,8 @@ void MapTest::on_start_pushButton_clicked()
 void MapTest::on_stop_pushButton_clicked()
 {
     m_pTimer->stop();
+    QPixmap pixmap = *ui->main_windows_label->pixmap();
+    pixmap.save("./chip.png");
 }
 
 void MapTest::handleTimeout()
@@ -2348,21 +2371,21 @@ void MapTest::handleTimeout()
     // 定义起点和终点
     //Point start =m ake_pair(startX, startY);
 
-    Point start = make_pair(startY, startX);
+    //Point start = make_pair(startY, startX);
 
     // 求从起点到终点，经过的障碍物数量最少的路径
-    vector<Node> minObstaclesPath = bfs(m_mapData, start, result, targetChars);
+    //vector<Node> minObstaclesPath = bfs(m_mapData, start, result, targetChars);
 
 
     // 输出结果
-    if (minObstaclesPath.empty()) {
-        qDebug() << "无法到达终点";
-    } else {
-        qDebug() << "经过障碍物数量最少的路径：";
-        for (const auto& point : minObstaclesPath) {
-            qDebug() << point.x << ", " << point.y;
-        }
-    }
+    //if (minObstaclesPath.empty()) {
+     //   qDebug() << "无法到达终点";
+    //} else {
+    //    qDebug() << "经过障碍物数量最少的路径：";
+     //   for (const auto& point : minObstaclesPath) {
+    //        qDebug() << point.x << ", " << point.y;
+     //   }
+    //}
 
     ui->x_spinBox->setValue(result.second);
     ui->y_spinBox->setValue(result.first);

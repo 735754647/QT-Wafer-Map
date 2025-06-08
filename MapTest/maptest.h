@@ -115,6 +115,10 @@ private:
 
     void read_image(QString filename);//读取路径图片
 
+    void resetMapScale();//恢复原图
+
+    void DrawSmallMap(QLabel* targetLabel, int centerX, int centerY);//绘制小图
+
 protected:
 
     void mouseMoveEvent(QMouseEvent *e);

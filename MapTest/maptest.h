@@ -53,6 +53,7 @@ public:
 private:
 	Ui::MapTest* ui;
 
+    double m_scaleFactor=1.0; // 当前的缩放因子
     QTimer *m_pTimer;//定时器
     QImage Image;
 
@@ -73,9 +74,9 @@ private:
     short int rodegrees = 0;//旋转角度
 
     short int Mouse_x = 0, Mouse_y = 0;//鼠标点击位置
-
+    QPoint m_dragStartPosition;
     short int RecordCurrent_x = 0, RecordCurrent_y = 0;//记录容器当前点
-
+    int BigMapX=0 ,BigMapY=0;//大图点击位置
     int map_columns = 0, map_rows = 0;//地图行列
 
     bool IsDrawSmallMap = false, IsClickSmallMap = false;//是否画小地图；点击小地图区域画小地图
@@ -101,6 +102,7 @@ private slots:
     void on_stop_pushButton_clicked();
 
 private:
+
     void ReadMapTxtFile();//读取文件
 
     bool eventFilter(QObject* watched, QEvent* event) override;//事件过滤器
@@ -114,6 +116,9 @@ private:
     void read_image(QString filename);//读取路径图片
 
 protected:
+
+    void mouseMoveEvent(QMouseEvent *e);
+    void wheelEvent(QWheelEvent *event);
 
     virtual void mousePressEvent(QMouseEvent*) override;//重写鼠标点击
 };

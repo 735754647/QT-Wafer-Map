@@ -982,12 +982,13 @@ void MapTest::ReadMapTxtFile()
     BigMapVerticalslider->setRulerSliderValue(map_rows);//设置当前值
     BigMapVerticalslider->move(mapwidth,0);//移动
 
-
+    m_scaleFactor=1;
     rodegrees = 0;
     Paint();
     update(); //刷新显示
 
 }
+
 
 //事件过滤器
 bool MapTest::eventFilter(QObject* watched, QEvent* event)
@@ -1071,6 +1072,7 @@ void MapTest::Paint_Secondary()
 
     if (IsDrawSmallMap || IsClickSmallMap)
     {
+
         mylabel.UpdateRectangle();
 
         QPixmap pixmap(ui->small_label->height(), ui->small_label->width());
@@ -1080,20 +1082,25 @@ void MapTest::Paint_Secondary()
         QPen pen = painter.pen();
         pen.setWidth(1);
 
-        ui->x_pos_label->setText("X坐标：" + QString::number(RecordCurrent_x));
-        ui->y_pos_label->setText("Y坐标：" + QString::number(RecordCurrent_y));
+        ui->x_pos_label->setText("X坐标：" + QString::number(RecordCurrent_x+BigMapX));
+        ui->y_pos_label->setText("Y坐标：" + QString::number(RecordCurrent_y+BigMapY));
 
         QElapsedTimer mstimer;//计时器
         mstimer.start();
         QMap<int, char> new_mapData;
 
-        int rectWidth = 15; // 矩形的宽度
-        int rectHeight = 15; // 矩形的高度
+
         int cellSize = 18; // 单元格的大小
         int padding = 6; // 单元格之间的间距
 
-        int centerX = RecordCurrent_x; // 矩形的中心X坐标
-        int centerY = RecordCurrent_y; // 矩形的中心Y坐标
+
+        int centerX = RecordCurrent_x+BigMapX; // 矩形的中心X坐标
+        int centerY = RecordCurrent_y+BigMapY; // 矩形的中心Y坐标
+
+
+        int rectWidth=ui->small_label->width()/(cellSize + padding) ;// 矩形的宽度个数
+        int rectHeight= ui->small_label->height()/(cellSize + padding); // 矩形的高度个数
+
 
         int startX = centerX - rectWidth / 2; // 矩形左上角的X坐标
         int startY = centerY - rectHeight / 2; // 矩形左上角的Y坐标
@@ -1194,14 +1201,269 @@ void MapTest::read_image(QString filename)
 	}   
     QPixmap Pixmap=LoadImageFunction(filename,ui->main_windows_label->size());
     ui->main_windows_label->setPixmap(Pixmap);
-
+    Image = Pixmap.toImage();
 }
 
+//鼠标滚动
+void MapTest::wheelEvent(QWheelEvent *event)
+{
+    // 获取滚轮滚动的角度
+     int delta = event->angleDelta().y();
+    // 向上滚动，放大
+    if (delta > 0 )
+   {
+        if(m_scaleFactor==1.1)return;
+
+
+
+        m_scaleFactor=1.1;
+        QPixmap pixmap(ui->main_windows_label->height(), ui->main_windows_label->width());
+        QPainter painter(&pixmap);
+
+        pixmap.fill(Qt::white);
+        QPen pen = painter.pen();
+        pen.setWidth(1);
+
+        QMap<int, char> new_mapData;
+
+
+        int cellSize = 18; // 单元格的大小
+        int padding = 6; // 单元格之间的间距
+
+        int centerX = RecordCurrent_x; // 矩形的中心X坐标
+        int centerY = RecordCurrent_y; // 矩形的中心Y坐标
+
+
+        double rectWidth=ui->main_windows_label->width()/(cellSize + padding) ;// 矩形的宽度个数
+        double rectHeight= ui->main_windows_label->height()/(cellSize + padding); // 矩形的高度个数
+
+        int startX = centerX - int(rectWidth / 2); // 矩形左上角的X坐标
+        int startY = centerY - int(rectHeight / 2); // 矩形左上角的Y坐标
+
+        int m_top = 0;
+
+        rectangleLabel.setRectangle(30,30);
+
+        rectangleLabel.UpdateRectangle(QRectF((mapwidth)/2-24,(mapheight)/2-24,30,30));
+
+        // 使用无序映射进行数据查找
+        std::unordered_map<std::string, QColor> colorMap;
+        for (int n = 0; n < ui->tableWidget->rowCount(); n++)
+        {
+            QString data = ui->tableWidget->model()->index(n, 1).data().toString();
+            std::string ch = data.toStdString();
+            QColor color = QColor(ui->tableWidget->model()->index(n, 4).data().toString());
+            colorMap[ch] = color;
+        }
+
+
+        for (int y = startY; y <= startY + rectWidth; y++)
+        {
+            QMap<int, string> new_mapData;
+            if (rodegrees == 0) {
+                new_mapData = m_mapData.value(y);
+            }
+            else {
+                new_mapData = rotate_m_mapData.value(y);
+            }
+
+            int m_left = 0;
+            for (int x = startX; x <= startX + rectHeight; x++)
+            {
+                string ASCII = new_mapData.value(x);
+                // 从无序映射中查找颜色
+                auto iter = colorMap.find(ASCII);
+                //for (int n = 0; n < ui->tableWidget->rowCount(); n++)
+                {
+                    if (iter != colorMap.end())
+                    {
+                        QRect rect(m_left, m_top, cellSize, cellSize);
+                        painter.fillRect(rect, iter->second);
+                        painter.setPen(Qt::black);
+                        painter.drawText(rect, Qt::AlignCenter, QString::fromStdString(ASCII));
+                        //break;
+                    }
+                    else if (ASCII == " ")
+                    {
+                        QRect rect(m_left, m_top, cellSize, cellSize);
+                        painter.fillRect(rect, Qt::white);
+                        //break;
+                    }
+                    else
+                    {
+                        QRect rect(m_left, m_top, cellSize, cellSize);
+                        painter.fillRect(rect, Qt::white);
+                        painter.setPen(Qt::black);
+                        painter.drawText(rect, Qt::AlignCenter, QString::fromStdString(ASCII));
+                    }
+                }
+
+                m_left += cellSize + padding;
+            }
+
+            m_top += cellSize + padding;
+        }
+
+
+        painter.end();
+        ui->main_windows_label->setPixmap(pixmap);
+        }
+    else if (delta < 0)
+    {
+        RecordCurrent_x+=BigMapX;
+        RecordCurrent_y+=BigMapY;
+        BigMapX=0;
+        BigMapY=0;
+
+        if(rodegrees == 0 || rodegrees == 180)
+        {
+          rectangleLabel.setRectangle(mapwidth/(double)map_columns*15,mapheight/(double)map_rows*15);
+          rectangleLabel.UpdateRectangle(QRectF((RecordCurrent_x-7)*mapwidth/(double)map_columns,(RecordCurrent_y-7)*mapheight/(double)map_rows,mapheight/(double)map_columns*15,mapheight/(double)map_rows*15));
+        }
+        else if(rodegrees == 90 || rodegrees == 270)
+        {
+           rectangleLabel.setRectangle(mapwidth/(double)map_rows*15,mapheight/(double)map_columns*15);
+           rectangleLabel.UpdateRectangle(QRectF((RecordCurrent_x -7)*mapwidth/(double)map_rows,(RecordCurrent_y -7)*mapheight/(double)map_columns,mapwidth/(double)map_rows*15,mapheight/(double)map_columns*15));
+        }
+        m_scaleFactor=1;
+        ui->main_windows_label->setPixmap(QPixmap::fromImage(Image));
+    }
+    else
+    {
+        event->ignore();
+        return;
+    }
+}
+//鼠标拖拽
+void MapTest::mouseMoveEvent(QMouseEvent *e)
+{
+    if (m_scaleFactor!=1.1)
+    {
+      return;
+    }
+    setCursor(Qt::ClosedHandCursor);
+    QPoint delta = e->pos() - m_dragStartPosition;
+
+
+    RecordCurrent_x+=delta.x()/24;
+    RecordCurrent_y+=delta.y()/24;
+
+    if(RecordCurrent_x<0)
+    {
+        RecordCurrent_x=0;
+    }
+    else if(RecordCurrent_x>map_columns)
+    {
+        RecordCurrent_x=map_columns;
+    }
+
+    if(RecordCurrent_y<0)
+    {
+        RecordCurrent_y=0;
+    }
+    else if(RecordCurrent_y>map_rows)
+    {
+        RecordCurrent_y=map_rows;
+    }
+
+    QPixmap pixmap(ui->main_windows_label->height(), ui->main_windows_label->width());
+    QPainter painter(&pixmap);
+
+    pixmap.fill(Qt::white);
+    QPen pen = painter.pen();
+    pen.setWidth(1);
+
+    QMap<int, char> new_mapData;
+
+
+    int cellSize = 18; // 单元格的大小
+    int padding = 6; // 单元格之间的间距
+
+    int centerX = RecordCurrent_x; // 矩形的中心X坐标
+    int centerY = RecordCurrent_y; // 矩形的中心Y坐标
+
+
+    double rectWidth=ui->main_windows_label->width()/(cellSize + padding) ;// 矩形的宽度个数
+    double rectHeight= ui->main_windows_label->height()/(cellSize + padding); // 矩形的高度个数
+
+    int startX = centerX - int(rectWidth / 2); // 矩形左上角的X坐标
+    int startY = centerY - int(rectHeight / 2); // 矩形左上角的Y坐标
+
+    int m_top = 0;
+
+    // 使用无序映射进行数据查找
+    std::unordered_map<std::string, QColor> colorMap;
+    for (int n = 0; n < ui->tableWidget->rowCount(); n++)
+    {
+        QString data = ui->tableWidget->model()->index(n, 1).data().toString();
+        std::string ch = data.toStdString();
+        QColor color = QColor(ui->tableWidget->model()->index(n, 4).data().toString());
+        colorMap[ch] = color;
+    }
+
+
+    for (int y = startY; y <= startY + rectWidth; y++)
+    {
+        QMap<int, string> new_mapData;
+        if (rodegrees == 0) {
+            new_mapData = m_mapData.value(y);
+        }
+        else {
+            new_mapData = rotate_m_mapData.value(y);
+        }
+
+        int m_left = 0;
+        for (int x = startX; x <= startX + rectHeight; x++)
+        {
+            string ASCII = new_mapData.value(x);
+            // 从无序映射中查找颜色
+            auto iter = colorMap.find(ASCII);
+            //for (int n = 0; n < ui->tableWidget->rowCount(); n++)
+            {
+                if (iter != colorMap.end())
+                {
+                    QRect rect(m_left, m_top, cellSize, cellSize);
+                    painter.fillRect(rect, iter->second);
+                    painter.setPen(Qt::black);
+                    painter.drawText(rect, Qt::AlignCenter, QString::fromStdString(ASCII));
+                    //break;
+                }
+                else if (ASCII == " ")
+                {
+                    QRect rect(m_left, m_top, cellSize, cellSize);
+                    painter.fillRect(rect, Qt::white);
+                    //break;
+                }
+                else
+                {
+                    QRect rect(m_left, m_top, cellSize, cellSize);
+                    painter.fillRect(rect, Qt::white);
+                    painter.setPen(Qt::black);
+                    painter.drawText(rect, Qt::AlignCenter, QString::fromStdString(ASCII));
+                }
+            }
+
+            m_left += cellSize + padding;
+        }
+
+        m_top += cellSize + padding;
+    }
+
+
+    painter.end();
+    ui->main_windows_label->setPixmap(pixmap);
+
+    IsClickSmallMap = true;
+    update();
+}
 //鼠标按下
 void MapTest::mousePressEvent(QMouseEvent* e)
 {
-    QWidget::mousePressEvent(e);
 
+    QWidget::mousePressEvent(e);
+    setCursor(Qt::ArrowCursor); // 鼠标移回区域时恢复箭头光标
+    //if(m_scaleFactor!=1)
+       //return;
     Mouse_x = e->pos().x();
     Mouse_y = e->pos().y();
 
@@ -1215,8 +1477,20 @@ void MapTest::mousePressEvent(QMouseEvent* e)
         && Mouse_x < mainLabelGeometry.x() + mainLabelGeometry.width()
         && Mouse_y < mainLabelGeometry.y() + mainLabelGeometry.height())
     {
-        if (rodegrees == 0 || rodegrees == 180)
+        m_dragStartPosition = e->pos();
+        BigMapX=0;
+        BigMapY=0;
+
+        if(m_scaleFactor==1.1)
         {
+            int  Size=24;
+            BigMapX = (Mouse_x - mainLabelGeometry.x()) / Size- mapwidth/Size/2;
+            BigMapY = (Mouse_y - mainLabelGeometry.y()) / Size- mapheight/Size/2;
+
+        }
+        else if (rodegrees == 0 || rodegrees == 180)
+        {
+
             RecordCurrent_x = (Mouse_x - mainLabelGeometry.x()) / (mapwidth / (double)map_columns);
             RecordCurrent_y = (Mouse_y - mainLabelGeometry.y()) / (mapheight / (double)map_rows);
         }
@@ -1226,14 +1500,14 @@ void MapTest::mousePressEvent(QMouseEvent* e)
             RecordCurrent_y = (Mouse_y - mainLabelGeometry.y()) / (mapheight / (double)map_columns);
         }
 
-        SmallMapHorizontalslider->setRulerSliderRange(RecordCurrent_x - 7, RecordCurrent_x + 8); // 设置刻度范围
+        SmallMapHorizontalslider->setRulerSliderRange(RecordCurrent_x +BigMapX- 7, RecordCurrent_x+BigMapX + 8); // 设置刻度范围
         SmallMapHorizontalslider->setRulerSliderValue(15); // 设置当前值
 
-        SmallMapVerticalslider->setRulerSliderRange(RecordCurrent_y - 7, RecordCurrent_y + 8); // 设置刻度范围
+        SmallMapVerticalslider->setRulerSliderRange(RecordCurrent_y+BigMapY - 7, RecordCurrent_y +BigMapY+ 8); // 设置刻度范围
         SmallMapVerticalslider->setRulerSliderValue(15); // 设置当前值
 
-        ui->x_spinBox->setValue(RecordCurrent_x);
-        ui->y_spinBox->setValue(RecordCurrent_y);
+        ui->x_spinBox->setValue(RecordCurrent_x+BigMapX);
+        ui->y_spinBox->setValue(RecordCurrent_y+BigMapY);
 
         IsDrawSmallMap = true;
         update();
@@ -1402,7 +1676,7 @@ void MapTest::on_rotate_clicked()
     if (!transformedPixmap.save("./chip.png")) {
         qWarning() << "Failed to save image to ./chip.png";
     }
-
+    Image = transformedPixmap.toImage();
 	if (rodegrees == 0)//正常矩阵
 	{
 		rotate_m_mapData.clear();
@@ -1489,7 +1763,6 @@ void MapTest::on_rotate_clicked()
 
 }
 
-
 void MapTest::on_tableWidget_cellClicked(int row, int column)
 {
     if(row==ui->tableWidget->rowCount()-1 && column==1)
@@ -1556,8 +1829,6 @@ void MapTest::on_tableWidget_cellClicked(int row, int column)
 
 
 }
-
-
 
 
 // 假设你的字符串匹配函数
@@ -2251,6 +2522,24 @@ vector<Node> bfs(const QMap<int, QMap<int, string>>& m_mapData, const Point& sta
 void MapTest::on_start_pushButton_clicked()
 {
 
+    RecordCurrent_x+=BigMapX;
+    RecordCurrent_y+=BigMapY;
+    BigMapX=0;
+    BigMapY=0;
+
+    if(rodegrees == 0 || rodegrees == 180)
+    {
+      rectangleLabel.setRectangle(mapwidth/(double)map_columns*15,mapheight/(double)map_rows*15);
+      rectangleLabel.UpdateRectangle(QRectF((RecordCurrent_x-7)*mapwidth/(double)map_columns,(RecordCurrent_y-7)*mapheight/(double)map_rows,mapheight/(double)map_columns*15,mapheight/(double)map_rows*15));
+    }
+    else if(rodegrees == 90 || rodegrees == 270)
+    {
+       rectangleLabel.setRectangle(mapwidth/(double)map_rows*15,mapheight/(double)map_columns*15);
+       rectangleLabel.UpdateRectangle(QRectF((RecordCurrent_x -7)*mapwidth/(double)map_rows,(RecordCurrent_y -7)*mapheight/(double)map_columns,mapwidth/(double)map_rows*15,mapheight/(double)map_columns*15));
+    }
+    m_scaleFactor=1;
+    ui->main_windows_label->setPixmap(QPixmap::fromImage(Image));
+
     on_sure_pushButton_clicked();
     m_pTimer->start(1);
 
@@ -2327,9 +2616,11 @@ void MapTest::on_start_pushButton_clicked()
 //停止
 void MapTest::on_stop_pushButton_clicked()
 {
+
     m_pTimer->stop();
     QPixmap pixmap = *ui->main_windows_label->pixmap();
     pixmap.save("./chip.png");
+    Image = pixmap.toImage();
 }
 
 void MapTest::handleTimeout()

@@ -26,10 +26,16 @@ public:
 	void paintEvent(QPaintEvent * event);
 
     void UpdateRectangle();
+    void SetSelectedCell(int x, int y);
+    void ClearSelection();
 
 private:
 
 	virtual void mousePressEvent(QMouseEvent*) override;
+    int ClickPos_x;
+    int ClickPos_y;
+    bool ClickFlag;
+    bool CentreFlag;
 
 };
 

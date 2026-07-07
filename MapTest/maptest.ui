@@ -10,257 +10,114 @@
     <height>900</height>
    </rect>
   </property>
+  <property name="font">
+   <font>
+    <family>SimSun</family>
+    <pointsize>12</pointsize>
+   </font>
+  </property>
   <property name="windowTitle">
    <string>MapTest</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">QWidget{background-color: qlineargradient(spread:pad, x1:0, y1:0.006, x2:1, y2:1, stop:0 rgba(0, 81, 171, 255), stop:1 rgba(100, 207, 252, 255));}</string>
+   <string notr="true">QWidget#centralwidget {
+    background: qlineargradient(spread:pad, x1:0, y1:0.006, x2:1, y2:1,
+        stop:0 rgba(226, 232, 240, 255),
+        stop:0.45 rgba(247, 250, 252, 255),
+        stop:1 rgba(210, 218, 232, 255));
+}
+
+QFrame#map_function_panel {
+    background-color: rgba(240, 244, 248, 115);
+    border: 0px;
+}
+
+QLabel#map_panel_title {
+    color: rgb(255, 255, 255);
+    background-color: rgba(24, 34, 62, 235);
+    padding-left: 10px;
+}
+
+QComboBox#map_function_comboBox {
+    color: rgb(255, 255, 255);
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgb(82, 84, 100), stop:1 rgb(38, 38, 52));
+    border: 1px solid rgb(86, 92, 112);
+    border-radius: 4px;
+    padding-left: 10px;
+}
+
+QComboBox#map_function_comboBox::drop-down {
+    width: 28px;
+    border-left: 1px solid rgb(86, 92, 112);
+}
+
+QComboBox#map_function_comboBox::down-arrow {
+    width: 0px;
+    height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid rgb(255, 255, 255);
+    margin-right: 8px;
+}
+
+QComboBox#map_function_comboBox::down-arrow:on {
+    border-top: 0px;
+    border-bottom: 6px solid rgb(255, 255, 255);
+}
+
+QComboBox#map_function_comboBox QAbstractItemView {
+    color: rgb(255, 255, 255);
+    background-color: rgb(42, 44, 58);
+    selection-background-color: rgb(118, 137, 154);
+}
+
+QFrame#map_function_panel QPushButton {
+    color: rgb(15, 15, 15);
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgb(255, 255, 255),
+        stop:0.52 rgb(220, 220, 220),
+        stop:1 rgb(185, 185, 185));
+    border: 1px solid rgb(150, 150, 150);
+    border-radius: 4px;
+}
+
+QFrame#map_function_panel QPushButton:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgb(255, 255, 255), stop:1 rgb(205, 225, 245));
+}
+
+QFrame#map_function_panel QPushButton:pressed {
+    padding-left: 3px;
+    padding-top: 3px;
+    background: rgb(170, 190, 210);
+}
+
+QFrame#map_function_panel QPushButton:disabled {
+    color: rgb(125, 125, 125);
+    background: rgb(210, 210, 210);
+}
+
+QPushButton#direction_pushButton {
+    color: rgb(255, 255, 255);
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgb(82, 84, 100), stop:1 rgb(38, 38, 52));
+}
+
+QSpinBox, QLineEdit {
+    color: rgb(0, 220, 220);
+    background-color: rgb(35, 35, 38);
+    border: 1px solid rgb(120, 130, 140);
+    border-radius: 4px;
+    padding-left: 6px;
+}
+
+QTableWidget {
+    background-color: rgb(255, 255, 255);
+    gridline-color: rgb(180, 180, 180);
+}</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QPushButton" name="rotate">
-    <property name="geometry">
-     <rect>
-      <x>1470</x>
-      <y>200</y>
-      <width>111</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>14</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">QPushButton
-{
-    color: rgb(255, 255, 255);
-    background-color: rgb(46, 204, 113);
-	border-radius:8px;
-    border: 1px solid rgb(183 , 183 , 183);
-}
-
-QPushButton:hover
-{
-    color:red;
-    background-color:rgb(228 , 240 , 250);
-    border: 1px solid rgb(15 , 150 , 255);
-}
-
-QPushButton:pressed
-{
-    color:red;
-    background-color:rgb(204 , 228 , 247);
-    border: 1px solid rgb(1 , 84 , 153);
-    padding-left:3px;
-    padding-top:3px;
-}</string>
-    </property>
-    <property name="text">
-     <string>旋转90°</string>
-    </property>
-   </widget>
-   <widget class="MyLabel" name="small_label">
-    <property name="geometry">
-     <rect>
-      <x>1200</x>
-      <y>500</y>
-      <width>360</width>
-      <height>360</height>
-     </rect>
-    </property>
-    <property name="styleSheet">
-     <string notr="true"/>
-    </property>
-    <property name="text">
-     <string/>
-    </property>
-   </widget>
-   <widget class="QSpinBox" name="y_spinBox">
-    <property name="geometry">
-     <rect>
-      <x>1360</x>
-      <y>370</y>
-      <width>121</width>
-      <height>31</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>黑体</family>
-      <pointsize>20</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">color: rgb(255, 255, 0);</string>
-    </property>
-    <property name="alignment">
-     <set>Qt::AlignCenter</set>
-    </property>
-    <property name="maximum">
-     <number>223</number>
-    </property>
-   </widget>
-   <widget class="QLabel" name="x_position_label_3">
-    <property name="geometry">
-     <rect>
-      <x>1360</x>
-      <y>1270</y>
-      <width>191</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>16</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">background-color: rgba(255, 255, 255,0);
-color: rgb(255, 0, 0);</string>
-    </property>
-    <property name="text">
-     <string>X位置:</string>
-    </property>
-   </widget>
-   <widget class="QLabel" name="y_pos_label">
-    <property name="geometry">
-     <rect>
-      <x>1360</x>
-      <y>290</y>
-      <width>191</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>16</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">background-color: rgba(255, 255, 255,0);
-color: rgb(255, 255, 0);</string>
-    </property>
-    <property name="text">
-     <string>Y位置：</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="read_pushButton">
-    <property name="geometry">
-     <rect>
-      <x>1470</x>
-      <y>20</y>
-      <width>111</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>14</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">QPushButton
-{
-    color: rgb(255, 255, 255);
-    background-color: rgb(46, 204, 113);
-	border-radius:8px;
-    border: 1px solid rgb(183 , 183 , 183);
-}
-
-QPushButton:hover
-{
-    color:red;
-    background-color:rgb(228 , 240 , 250);
-    border: 1px solid rgb(15 , 150 , 255);
-}
-
-QPushButton:pressed
-{
-    color:red;
-    background-color:rgb(204 , 228 , 247);
-    border: 1px solid rgb(1 , 84 , 153);
-    padding-left:3px;
-    padding-top:3px;
-}</string>
-    </property>
-    <property name="text">
-     <string>读取txt</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="sure_pushButton">
-    <property name="geometry">
-     <rect>
-      <x>1520</x>
-      <y>360</y>
-      <width>61</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>14</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">QPushButton
-{
-    color: rgb(255, 255, 255);
-    background-color: rgb(46, 204, 113);
-	border-radius:8px;
-    border: 1px solid rgb(183 , 183 , 183);
-}
-
-QPushButton:hover
-{
-    color:red;
-    background-color:rgb(228 , 240 , 250);
-    border: 1px solid rgb(15 , 150 , 255);
-}
-
-QPushButton:pressed
-{
-    color:red;
-    background-color:rgb(204 , 228 , 247);
-    border: 1px solid rgb(1 , 84 , 153);
-    padding-left:3px;
-    padding-top:3px;
-}</string>
-    </property>
-    <property name="text">
-     <string>确定</string>
-    </property>
-   </widget>
-   <widget class="QSpinBox" name="x_spinBox">
-    <property name="geometry">
-     <rect>
-      <x>1160</x>
-      <y>370</y>
-      <width>121</width>
-      <height>31</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>黑体</family>
-      <pointsize>20</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">color: rgb(255, 255, 0);</string>
-    </property>
-    <property name="alignment">
-     <set>Qt::AlignCenter</set>
-    </property>
-    <property name="maximum">
-     <number>265</number>
-    </property>
-   </widget>
    <widget class="RectangleLabel" name="main_windows_label">
     <property name="geometry">
      <rect>
@@ -274,7 +131,7 @@ QPushButton:pressed
      <bool>false</bool>
     </property>
     <property name="styleSheet">
-     <string notr="true">background-color: rgba(255, 255, 255,0);
+     <string notr="true">background-color: rgba(255, 255, 255, 0);
 color: rgb(255, 0, 0);</string>
     </property>
     <property name="frameShape">
@@ -287,73 +144,58 @@ color: rgb(255, 0, 0);</string>
      <bool>false</bool>
     </property>
    </widget>
-   <widget class="QLabel" name="label">
+   <widget class="QLabel" name="map_info_label">
     <property name="geometry">
      <rect>
-      <x>1140</x>
-      <y>0</y>
-      <width>331</width>
-      <height>111</height>
+      <x>0</x>
+      <y>835</y>
+      <width>800</width>
+      <height>58</height>
      </rect>
     </property>
     <property name="font">
      <font>
-      <family>宋体</family>
-      <pointsize>20</pointsize>
+      <family>SimSun</family>
+      <pointsize>14</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
      </font>
     </property>
     <property name="styleSheet">
-     <string notr="true">background-color: rgba(255, 255, 255,0);
+     <string notr="true">background-color: rgba(0, 0, 0, 90);
 color: rgb(255, 255, 0);</string>
     </property>
     <property name="text">
-     <string>运行时间</string>
+     <string>文件名：--
+行号：--  列号：--  角度：--度</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
     </property>
-   </widget>
-   <widget class="QLabel" name="x_pos_label">
-    <property name="geometry">
-     <rect>
-      <x>1160</x>
-      <y>290</y>
-      <width>191</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>16</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">background-color: rgba(255, 255, 255,0);
-color: rgb(255, 255, 0);</string>
-    </property>
-    <property name="text">
-     <string>X位置:</string>
+    <property name="wordWrap">
+     <bool>true</bool>
     </property>
    </widget>
    <widget class="QTableWidget" name="tableWidget">
     <property name="geometry">
      <rect>
-      <x>830</x>
-      <y>0</y>
-      <width>321</width>
+      <x>840</x>
+      <y>20</y>
+      <width>360</width>
       <height>390</height>
      </rect>
     </property>
-    <property name="styleSheet">
-     <string notr="true">background-color: rgb(255, 255, 255);
-</string>
+    <property name="font">
+     <font>
+      <family>SimSun</family>
+      <pointsize>10</pointsize>
+     </font>
     </property>
     <attribute name="horizontalHeaderMinimumSectionSize">
      <number>11</number>
     </attribute>
     <attribute name="horizontalHeaderDefaultSectionSize">
-     <number>55</number>
+     <number>64</number>
     </attribute>
     <attribute name="verticalHeaderDefaultSectionSize">
      <number>30</number>
@@ -384,148 +226,779 @@ color: rgb(255, 255, 0);</string>
      </property>
     </column>
    </widget>
-   <widget class="QComboBox" name="upDown_comboBox">
+   <widget class="MyLabel" name="small_label">
     <property name="geometry">
      <rect>
-      <x>910</x>
-      <y>470</y>
-      <width>171</width>
-      <height>31</height>
+      <x>840</x>
+      <y>430</y>
+      <width>360</width>
+      <height>360</height>
+     </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(255, 255, 255);</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>840</x>
+      <y>840</y>
+      <width>360</width>
+      <height>32</height>
      </rect>
     </property>
     <property name="font">
      <font>
+      <family>SimSun</family>
+      <pointsize>12</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgba(0, 0, 0, 90);
+color: rgb(255, 255, 0);</string>
+    </property>
+    <property name="text">
+     <string>运行时间</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QFrame" name="map_function_panel">
+    <property name="geometry">
+     <rect>
+      <x>1230</x>
+      <y>20</y>
+      <width>360</width>
+      <height>820</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>SimSun</family>
       <pointsize>12</pointsize>
      </font>
     </property>
-    <item>
-     <property name="text">
-      <string>左-&gt;右 上-&gt;下 </string>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>左-&gt;右 下-&gt;上</string>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>右-&gt;左 上-&gt;下 </string>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>右-&gt;左 下-&gt;上</string>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>上-&gt;下 左-&gt;右</string>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>下-&gt;上 左-&gt;右</string>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>上-&gt;下 右-&gt;左</string>
-     </property>
-    </item>
-    <item>
-     <property name="text">
-      <string>下-&gt;上 右-&gt;左</string>
-     </property>
-    </item>
-   </widget>
-   <widget class="QPushButton" name="start_pushButton">
-    <property name="geometry">
-     <rect>
-      <x>880</x>
-      <y>560</y>
-      <width>93</width>
-      <height>41</height>
-     </rect>
+    <property name="frameShape">
+     <enum>QFrame::NoFrame</enum>
     </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>14</pointsize>
-     </font>
+    <property name="frameShadow">
+     <enum>QFrame::Plain</enum>
     </property>
-    <property name="styleSheet">
-     <string notr="true">QPushButton
-{
-    color: rgb(255, 255, 255);
-    background-color: rgb(46, 204, 113);
-	border-radius:8px;
-    border: 1px solid rgb(183 , 183 , 183);
-}
-
-QPushButton:hover
-{
-    color:red;
-    background-color:rgb(228 , 240 , 250);
-    border: 1px solid rgb(15 , 150 , 255);
-}
-
-QPushButton:pressed
-{
-    color:red;
-    background-color:rgb(204 , 228 , 247);
-    border: 1px solid rgb(1 , 84 , 153);
-    padding-left:3px;
-    padding-top:3px;
-}</string>
-    </property>
-    <property name="text">
-     <string>开始</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="stop_pushButton">
-    <property name="geometry">
-     <rect>
-      <x>1050</x>
-      <y>560</y>
-      <width>93</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <family>楷体</family>
-      <pointsize>14</pointsize>
-     </font>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">QPushButton
-{
-    color: rgb(255, 255, 255);
-    background-color: rgb(46, 204, 113);
-	border-radius:8px;
-    border: 1px solid rgb(183 , 183 , 183);
-}
-
-QPushButton:hover
-{
-    color:red;
-    background-color:rgb(228 , 240 , 250);
-    border: 1px solid rgb(15 , 150 , 255);
-}
-
-QPushButton:pressed
-{
-    color:red;
-    background-color:rgb(204 , 228 , 247);
-    border: 1px solid rgb(1 , 84 , 153);
-    padding-left:3px;
-    padding-top:3px;
-}</string>
-    </property>
-    <property name="text">
-     <string>停止</string>
-    </property>
+    <widget class="QLabel" name="map_panel_title">
+     <property name="geometry">
+      <rect>
+       <x>0</x>
+       <y>0</y>
+       <width>360</width>
+       <height>34</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <family>SimSun</family>
+       <pointsize>14</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>晶圆地图</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignVCenter</set>
+     </property>
+    </widget>
+    <widget class="QComboBox" name="map_function_comboBox">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>50</y>
+       <width>340</width>
+       <height>34</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <family>SimSun</family>
+       <pointsize>12</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <item>
+      <property name="text">
+       <string>Map地图设置</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Map路径规划</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Map地图对点</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Map编辑</string>
+      </property>
+     </item>
+    </widget>
+    <widget class="QStackedWidget" name="map_function_stack">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>96</y>
+       <width>340</width>
+       <height>710</height>
+      </rect>
+     </property>
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="setting_page">
+      <widget class="QPushButton" name="read_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>40</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>加载文档</string>
+       </property>
+      </widget>
+      <widget class="QComboBox" name="map_load_mode_comboBox">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>0</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <item>
+        <property name="text">
+         <string>默认加载</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>csv加载</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>自定义加载</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Excel加载</string>
+        </property>
+       </item>
+      </widget>
+      <widget class="QPushButton" name="reset_view_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>120</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>恢复视图</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="manual_scan_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>80</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>手动扫码</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="rotate">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>160</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>旋转Map图</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="path_page">
+      <widget class="QPushButton" name="direction_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>40</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>行进方向</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="start_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>120</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>开始规划</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="first_target_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>80</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>按方向找首点</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="stop_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>160</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>停止</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="point_page">
+      <widget class="QPushButton" name="set_start_point_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>0</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>设置起点</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="ref_point_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>40</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>添加参考点</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="clear_reference_points_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>80</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>清空参考点</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="point_alignment_title_label">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>130</y>
+         <width>340</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>对点坐标</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignVCenter</set>
+       </property>
+      </widget>
+      <widget class="QLabel" name="point_alignment_info_label">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>166</y>
+         <width>340</width>
+         <height>300</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>起点：--, --</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="param_page">
+      <widget class="QRadioButton" name="edit_point_radioButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>0</y>
+         <width>90</width>
+         <height>28</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>点选</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="edit_rect_radioButton">
+       <property name="geometry">
+        <rect>
+         <x>110</x>
+         <y>0</y>
+         <width>90</width>
+         <height>28</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>框选</string>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="edit_circle_radioButton">
+       <property name="geometry">
+        <rect>
+         <x>220</x>
+         <y>0</y>
+         <width>90</width>
+         <height>28</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>圆选</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="edit_current_point_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>38</y>
+         <width>150</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>当前选点</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="edit_current_point_value_label">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>38</y>
+         <width>170</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>--, --</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignVCenter</set>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="edit_left_top_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>78</y>
+         <width>150</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>取左上点</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="edit_left_top_value_label">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>78</y>
+         <width>170</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>--, --</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignVCenter</set>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="edit_right_bottom_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>118</y>
+         <width>150</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>取右下点</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="edit_right_bottom_value_label">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>118</y>
+         <width>170</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>--, --</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignVCenter</set>
+       </property>
+      </widget>
+      <widget class="QLabel" name="ring_count_label">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>160</y>
+         <width>90</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>圈数</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+       </property>
+      </widget>
+      <widget class="QSpinBox" name="ring_count_spinBox">
+       <property name="geometry">
+        <rect>
+         <x>100</x>
+         <y>160</y>
+         <width>240</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="minimum">
+        <number>1</number>
+       </property>
+       <property name="maximum">
+        <number>99</number>
+       </property>
+       <property name="value">
+        <number>2</number>
+       </property>
+      </widget>
+      <widget class="QLabel" name="new_bin_label">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>200</y>
+         <width>90</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>新bin值</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+       </property>
+      </widget>
+      <widget class="QLineEdit" name="new_bin_lineEdit">
+       <property name="geometry">
+        <rect>
+         <x>100</x>
+         <y>200</y>
+         <width>240</width>
+         <height>30</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>1</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="change_bin_pushButton">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>244</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>修改选区bin</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="crop_select_pushButton">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>284</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>裁剪选区</string>
+       </property>
+      </widget>
+     </widget>
+    </widget>
    </widget>
   </widget>
  </widget>

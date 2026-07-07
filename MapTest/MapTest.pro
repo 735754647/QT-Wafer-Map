@@ -1,4 +1,4 @@
-QT       += core gui
+QT       += core gui gui-private
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -17,18 +17,22 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     RectangleLabel.cpp \
+    capturescreen.cpp \
     drawingthread.cpp \
     main.cpp \
     maptest.cpp \
     mylabel.cpp \
-    rulerslider.cpp
+    rulerslider.cpp \
+    rulerwidget.cpp
 
 HEADERS += \
     RectangleLabel.h \
+    capturescreen.h \
     drawingthread.h \
     maptest.h \
     mylabel.h \
     rulerslider.h \
+    rulerwidget.h \
     strCoding.h
 
 FORMS += \

@@ -4,8 +4,6 @@
 #include "strCoding.h"
 #include <queue>
 #include <iostream>
-#include <fstream>
-#include <regex>
 #include <algorithm>
 #include <unordered_set>
 #include <QMouseEvent>
@@ -38,6 +36,8 @@
 
 namespace
 {
+const int MaxLoadBinCharCount = 4;
+
 enum MapLoadMode
 {
     DefaultLoadMode = 0,
@@ -753,9 +753,18 @@ QString normalizeXlsxCellText(const QString& text)
     return trimmed.isEmpty() ? QStringLiteral(" ") : trimmed;
 }
 
+bool readWaferMapRows(const QString& filePath, QVector<QByteArray>& rows, MapLoadRangeDefaults* defaults = nullptr);
+
 // 扫描普通文本地图，按重复最多的行宽推断默认加载范围。
 MapLoadRangeDefaults detectMapLoadRangeDefaults(const QString& filePath)
 {
+    QVector<QByteArray> waferRows;
+    MapLoadRangeDefaults waferDefaults;
+    if (readWaferMapRows(filePath, waferRows, &waferDefaults))
+    {
+        return waferDefaults;
+    }
+
     MapLoadRangeDefaults defaults;
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -803,6 +812,76 @@ MapLoadRangeDefaults detectMapLoadRangeDefaults(const QString& filePath)
     defaults.endColumn = qMax(1, bestLength);
     return defaults;
 }
+
+// 直接解析IBIS/XML格式.map中的WAFER_MAP，不再生成中间txt文件。
+bool readWaferMapRows(const QString& filePath, QVector<QByteArray>& rows, MapLoadRangeDefaults* defaults)
+{
+    QString suffix = QFileInfo(filePath).suffix().toLower();
+    if (suffix != QStringLiteral("map") && suffix != QStringLiteral("xml"))
+    {
+        return false;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return false;
+    }
+
+    QString content = QString::fromLocal8Bit(file.readAll());
+    QRegularExpression rowRegex(QStringLiteral("<ROW_COUNT>\\s*(\\d+)\\s*</ROW_COUNT>"));
+    QRegularExpression columnRegex(QStringLiteral("<COLUMN_COUNT>\\s*(\\d+)\\s*</COLUMN_COUNT>"));
+    QRegularExpression waferRegex(QStringLiteral("<WAFER_MAP>([\\s\\S]*?)</WAFER_MAP>"));
+    QRegularExpressionMatch rowMatch = rowRegex.match(content);
+    QRegularExpressionMatch columnMatch = columnRegex.match(content);
+    QRegularExpressionMatch waferMatch = waferRegex.match(content);
+    if (!columnMatch.hasMatch() || !waferMatch.hasMatch())
+    {
+        return false;
+    }
+
+    int columnCount = columnMatch.captured(1).toInt();
+    if (columnCount <= 0)
+    {
+        return false;
+    }
+
+    QString waferText = waferMatch.captured(1);
+    waferText.remove(QLatin1Char('\r'));
+    waferText.remove(QLatin1Char('\n'));
+
+    int declaredRows = rowMatch.hasMatch() ? rowMatch.captured(1).toInt() : 0;
+    int calculatedRows = (waferText.size() + columnCount - 1) / columnCount;
+    int rowCount = declaredRows > 0 ? qMin(declaredRows, calculatedRows) : calculatedRows;
+    if (rowCount <= 0)
+    {
+        return false;
+    }
+
+    rows.clear();
+    rows.reserve(rowCount);
+    for (int row = 0; row < rowCount; ++row)
+    {
+        QString rowText = waferText.mid(row * columnCount, columnCount);
+        if (rowText.size() < columnCount)
+        {
+            rowText.append(QString(columnCount - rowText.size(), QLatin1Char(' ')));
+        }
+        rows.append(rowText.toLocal8Bit());
+    }
+
+    if (defaults != nullptr)
+    {
+        defaults->startRow = 1;
+        defaults->endRow = rowCount;
+        defaults->startColumn = 1;
+        defaults->endColumn = columnCount;
+        defaults->totalRows = rowCount;
+        defaults->maxColumns = columnCount;
+    }
+    return true;
+}
+
 }
 
 // 初始化界面控件、地图事件过滤器、刻度尺和功能区信号。
@@ -886,15 +965,6 @@ MapTest::~MapTest()
             delete m_drawingThread;
         }
 }
-
-//QString转Std::String
-std::string QStringToStdString(const QString& qstr) {
-    QByteArray byteArray = qstr.toUtf8();
-    const char* utf8String = byteArray.constData();
-    std::string stdString(utf8String);
-    return stdString;
-}
-
 
 //获取CheckBox
 QCheckBox* getCheckBox(QTableWidget*table,int row ,int column)
@@ -1395,102 +1465,6 @@ void removeWhitespaceRowsAndColumns(QVector<QByteArray>& data)
         }
 }
 
-//如果不是txt文件转化，获取新的路径
-string getNewFilePath(string &filename)
-{
-    int COLUMN = 0;
-
-    std::ifstream file(filename); // 替换为您的文件路径
-
-    if (file.is_open())
-    {
-        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-
-        std::regex patternROW("<ROW_COUNT>(.*)</ROW_COUNT>");
-        std::regex patternCOLUMN("<COLUMN_COUNT>(.*)</COLUMN_COUNT>");
-        std::regex patternWAFER("<WAFER_MAP>(.*)</WAFER_MAP>");
-
-        std::smatch match;
-
-        if (std::regex_search(content, match, patternROW))
-        {
-            std::string data = match.str(1);
-            std::cout << "提取到的数据为: " << data << std::endl;
-        }
-        else {
-            std::cout << "未找到匹配的内容。" << std::endl;
-        }
-
-        if (std::regex_search(content, match, patternCOLUMN))
-        {
-            std::string data = match.str(1);
-            COLUMN = std::stoi(data);
-            std::cout << "提取到的数据为: " << data << std::endl;
-        }
-
-        else
-        {
-            std::cout << "未找到匹配的内容。" << std::endl;
-        }
-
-
-        if (std::regex_search(content, match, patternWAFER))
-        {
-            std::string data = match.str(1);
-            std::string strFileName = filename.substr(filename.find_last_of("\\") + 1);
-            size_t num = strFileName.find_last_of('.');
-            if (num > 0)
-            {
-                strFileName = strFileName.substr(0, num);
-            }
-             std::ofstream outputFile(strFileName + ".txt", std::ios::binary);
-
-             if (outputFile.is_open())
-             {
-                 for (size_t i = 0; i < data.length(); i += COLUMN)
-                 {
-                     std::string line = data.substr(i, COLUMN);
-                     outputFile.write((line+'\n').c_str(), line.length()+1);
-                 }
-                 outputFile.flush(); // 刷新缓冲区
-                 outputFile.close();
-                 std::cout << "Content has been written to the file successfully." << std::endl;
-             }
-             else
-             {
-                 std::cout << "Unable to open the file." << std::endl;
-
-             }
-
-            return(strFileName+".txt");
-        }
-
-        else
-        {
-            std::string strFileName = filename.substr(filename.find_last_of("\\") + 1);
-            size_t num = strFileName.find_last_of('.');
-            if (num > 0)
-            {
-                strFileName = strFileName.substr(0, num);
-            }
-
-            std::ofstream targetFile(strFileName + ".txt", std::ios::binary);
-
-            targetFile << content; // 将源文件的内容复制到目标文件中
-            targetFile.close();
-            return(strFileName+".txt");
-        }
-    }
-
-    else
-    {
-        std::cout << "无法打开文件！" << std::endl;
-    }
-
-    file.close();
-    return filename;
-}
-
 //读取Txt按钮
 void MapTest::on_read_pushButton_clicked()
 {
@@ -1526,11 +1500,6 @@ bool MapTest::loadMapFileFromPath(const QString& filePath, int loadMode)
     }
 
     QString convertedFileName = filePath;
-    if (!isXlsxFilePath(filePath))
-    {
-        std::string stdstr = QStringToStdString(filePath);
-        convertedFileName = QString::fromLocal8Bit(getNewFilePath(stdstr).c_str()).toLocal8Bit().constData();
-    }
 
     m_activeLoadMode = loadMode;
     if (loadMode == CsvLoadMode)
@@ -1740,8 +1709,9 @@ bool MapTest::configureMapLoadRange(const QString& filePath)
     binCharCountComboBox->addItems(QStringList()
                                    << QStringLiteral("1位")
                                    << QStringLiteral("2位")
-                                   << QStringLiteral("3位"));
-    binCharCountComboBox->setCurrentIndex(clampToRange(m_loadBinCharCount, 1, 3) - 1);
+                                   << QStringLiteral("3位")
+                                   << QStringLiteral("4位"));
+    binCharCountComboBox->setCurrentIndex(clampToRange(m_loadBinCharCount, 1, MaxLoadBinCharCount) - 1);
 
     gridLayout->addWidget(new QLabel(QStringLiteral("起始行"), &dialog), 0, 0);
     gridLayout->addWidget(startRowSpinBox, 0, 1);
@@ -2009,6 +1979,7 @@ void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& st
     m_editSelectionMode = MapEditPoint;
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    invalidateMapColorImage();
     ui->edit_point_radioButton->setChecked(true);
 
     if (!defaultTargetValue.empty())
@@ -2325,11 +2296,17 @@ void MapTest::ReadMapTxtFile()
         return;
     }
 
-	QFile file(filTexyename);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-		return;
+    QVector<QByteArray> waferRows;
+    MapLoadRangeDefaults waferDefaults;
+    bool isWaferMapFile = readWaferMapRows(filTexyename, waferRows, &waferDefaults);
 
-        MapLoadRangeDefaults defaults = detectMapLoadRangeDefaults(filTexyename);
+    QFile file(filTexyename);
+    if (!isWaferMapFile && !file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        return;
+    }
+
+        MapLoadRangeDefaults defaults = isWaferMapFile ? waferDefaults : detectMapLoadRangeDefaults(filTexyename);
         int startRow = defaults.startRow;
         int endRow = defaults.endRow;
         int startColumn = defaults.startColumn;
@@ -2345,11 +2322,14 @@ void MapTest::ReadMapTxtFile()
         else
         {
             int mostFrequentColumn = 0;
-            QPair<int, int> result = currenceLength(filTexyename, mostFrequentColumn);
-            if (result.first > 0 && result.second >= result.first)
+            if (!isWaferMapFile)
             {
-                startRow = result.first;
-                endRow = result.second;
+                QPair<int, int> result = currenceLength(filTexyename, mostFrequentColumn);
+                if (result.first > 0 && result.second >= result.first)
+                {
+                    startRow = result.first;
+                    endRow = result.second;
+                }
             }
         }
 
@@ -2363,8 +2343,29 @@ void MapTest::ReadMapTxtFile()
 
     QVector<QByteArray> mapData;
 
-    int currentLine = 1;
-    while (!file.atEnd() && currentLine <= endRow) {
+    if (isWaferMapFile)
+    {
+        for (int currentLine = startRow; currentLine <= endRow && currentLine <= waferRows.size(); ++currentLine)
+        {
+            QByteArray line = waferRows.at(currentLine - 1);
+            if (m_hasLoadRange)
+            {
+                if (line.size() < endColumn)
+                {
+                    line.append(QByteArray(endColumn - line.size(), ' '));
+                }
+                mapData.append(line.mid(startColumn - 1, endColumn - startColumn + 1));
+            }
+            else
+            {
+                mapData.append(line);
+            }
+        }
+    }
+    else
+    {
+        int currentLine = 1;
+        while (!file.atEnd() && currentLine <= endRow) {
             QByteArray line = file.readLine();
             if (currentLine >= startRow) {
                 if (m_hasLoadRange)
@@ -2383,6 +2384,7 @@ void MapTest::ReadMapTxtFile()
             }
             ++currentLine;
         }
+    }
 
     if (mapData.isEmpty())
     {
@@ -2422,7 +2424,7 @@ void MapTest::ReadMapTxtFile()
         }
     }
 
-    int charnum = m_hasLoadRange ? clampToRange(m_loadBinCharCount, 1, 3) : 1;
+    int charnum = m_hasLoadRange ? clampToRange(m_loadBinCharCount, 1, MaxLoadBinCharCount) : 1;
     if (!m_hasLoadRange)
     {
         // 调用函数找到符合条件的子串并存储在容器中
@@ -2580,6 +2582,7 @@ void MapTest::ReadMapTxtFile()
     m_editSelectionMode = MapEditPoint;
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    invalidateMapColorImage();
     ui->edit_point_radioButton->setChecked(true);
 
     if (!defaultTargetValue.empty())
@@ -2841,7 +2844,7 @@ void MapTest::Paint()
 //画小窗口
 void MapTest::Paint_Secondary()
 {
-    renderSmallMap();
+    renderSmallMap(buildColorMap());
 }
 
 //读取图片 并显示
@@ -2857,12 +2860,11 @@ void MapTest::read_image(QString filename)
 }
 
 // 公共绘制函数
-void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY)
+void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const std::unordered_map<std::string, QColor>& colorMap)
 {
     if (m_mapData.isEmpty())
     {
         targetLabel->clear();
-        targetLabel->update();
         return;
     }
 
@@ -2877,25 +2879,29 @@ void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY)
     int startX = centerX - cellCount / 2;
     int startY = centerY - cellCount / 2;
     const QMap<int, QMap<int, string>>& mapData = currentMapData();
-    std::unordered_map<std::string, QColor> colorMap = buildColorMap();
+    const int columns = displayColumns();
+    const int rows = displayRows();
 
     painter.setPen(QPen(QColor(45, 45, 45), 1));
 
     for (int row = 0; row < cellCount; ++row)
     {
         int mapY = startY + row;
+        const auto rowIter = mapData.constFind(mapY);
+        const bool rowValid = rowIter != mapData.constEnd();
         for (int col = 0; col < cellCount; ++col)
         {
             int mapX = startX + col;
             QRectF rect(col * cellWidth, row * cellHeight, cellWidth, cellHeight);
-            if (mapX < 0 || mapX >= displayColumns() || mapY < 0 || mapY >= displayRows())
+            if (mapX < 0 || mapX >= columns || mapY < 0 || mapY >= rows || !rowValid)
             {
                 painter.fillRect(rect, QColor(235, 235, 235));
                 painter.drawRect(rect);
                 continue;
             }
 
-            string ASCII = mapData.value(mapY).value(mapX);
+            const auto cellIter = rowIter.value().constFind(mapX);
+            const std::string ASCII = (cellIter == rowIter.value().constEnd()) ? std::string(" ") : cellIter.value();
             auto iter = colorMap.find(ASCII);
             bool isAssistPath = isAssistPathDisplayCell(mapX, mapY);
 
@@ -2942,7 +2948,6 @@ void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY)
 
     painter.end();
     targetLabel->setPixmap(pixmap);
-    targetLabel->update();
 }
 
 // 返回当前显示方向下的大图列数，90/270度时行列互换。
@@ -2973,6 +2978,75 @@ const QMap<int, QMap<int, string>>& MapTest::currentMapData() const
         return m_mapData;
     }
     return rotate_m_mapData;
+}
+
+// 标记缓存图失效，下次刷新大图时再按需重建。
+void MapTest::invalidateMapColorImage()
+{
+    m_mapColorImageDirty = true;
+}
+
+// 重建一格一像素的地图缓存图，缩放/平移时可直接贴图，避免每帧遍历所有格子绘制。
+void MapTest::rebuildMapColorImage(const std::unordered_map<std::string, QColor>& colorMap)
+{
+    const int columns = displayColumns();
+    const int rows = displayRows();
+    if (columns <= 0 || rows <= 0 || m_mapData.isEmpty())
+    {
+        m_mapColorImage = QImage();
+        m_mapColorImageDirty = false;
+        return;
+    }
+
+    const QMap<int, QMap<int, string>>& mapData = currentMapData();
+    const std::string blankCell(" ");
+    m_mapColorImage = QImage(columns, rows, QImage::Format_RGB32);
+    m_mapColorImage.fill(Qt::white);
+
+    for (int row = 0; row < rows; ++row)
+    {
+        QRgb* scanLine = reinterpret_cast<QRgb*>(m_mapColorImage.scanLine(row));
+        const auto rowIter = mapData.constFind(row);
+        if (rowIter == mapData.constEnd())
+        {
+            continue;
+        }
+
+        for (int col = 0; col < columns; ++col)
+        {
+            QColor color;
+            if (isAssistPathDisplayCell(col, row))
+            {
+                color = QColor(165, 165, 165);
+            }
+            else
+            {
+                const auto cellIter = rowIter.value().constFind(col);
+                const std::string& value = (cellIter == rowIter.value().constEnd()) ? blankCell : cellIter.value();
+                const auto colorIter = colorMap.find(value);
+                color = (colorIter != colorMap.end()) ? colorIter->second : QColor(Qt::white);
+            }
+            scanLine[col] = color.rgb();
+        }
+    }
+
+    m_mapColorImageDirty = false;
+}
+
+// 缓存图有效时只改一个显示坐标像素，运行步进时避免整图重建。
+bool MapTest::updateMapColorImagePixel(int displayX, int displayY, const QColor& color)
+{
+    if (m_mapColorImageDirty ||
+        m_mapColorImage.isNull() ||
+        displayX < 0 || displayY < 0 ||
+        displayX >= m_mapColorImage.width() ||
+        displayY >= m_mapColorImage.height())
+    {
+        return false;
+    }
+
+    m_mapColorImage.setPixelColor(displayX, displayY, color);
+    return true;
 }
 
 // 从表格读取bin颜色配置，生成绘图时使用的颜色映射。
@@ -3052,7 +3126,23 @@ bool MapTest::processCurrentCellIfChecked()
     }
 
     m_mapData[sourceY][sourceX] = "#";
+    if (rodegrees == 90)
+    {
+        rotate_m_mapData[sourceX][map_rows - 1 - sourceY] = "#";
+    }
+    else if (rodegrees == 180)
+    {
+        rotate_m_mapData[map_rows - 1 - sourceY][map_columns - 1 - sourceX] = "#";
+    }
+    else if (rodegrees == 270)
+    {
+        rotate_m_mapData[map_columns - 1 - sourceX][sourceY] = "#";
+    }
     m_assistPathSourceCells.remove(sourceCellKey(sourceX, sourceY));
+    if (!updateMapColorImagePixel(RecordCurrent_x, RecordCurrent_y, Qt::white))
+    {
+        invalidateMapColorImage();
+    }
 
     QTableWidgetItem* item = ui->tableWidget->item(value->second, 3);
     if (item != nullptr)
@@ -3094,7 +3184,6 @@ bool MapTest::processCurrentCellIfChecked()
         }
     }
 
-    rebuildRotatedMap();
     return true;
 }
 
@@ -3242,6 +3331,10 @@ void MapTest::markAssistPathCell(int displayX, int displayY)
         return;
     }
     m_assistPathSourceCells.insert(sourceCellKey(sourceCell.x(), sourceCell.y()));
+    if (!updateMapColorImagePixel(displayX, displayY, QColor(165, 165, 165)))
+    {
+        invalidateMapColorImage();
+    }
 }
 
 // 更新当前选中格，并按需要居中和刷新大小图。
@@ -3604,6 +3697,7 @@ void MapTest::applyEditToSelection(const QString& newValue)
     updateTableCountsFromMapData();
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    invalidateMapColorImage();
     m_hasEditRectStart = false;
     m_hasEditRectEnd = false;
     updateEditSelectionUi();
@@ -3750,6 +3844,8 @@ void MapTest::renderMainMap()
     {
         ui->main_windows_label->clear();
         ui->main_windows_label->update();
+        ui->small_label->clear();
+        ui->small_label->update();
         return;
     }
 
@@ -3764,33 +3860,75 @@ void MapTest::renderMainMap()
     QRectF view = currentViewRect();
     const QMap<int, QMap<int, string>>& mapData = currentMapData();
     std::unordered_map<std::string, QColor> colorMap = buildColorMap();
+    const int columns = displayColumns();
+    const int rows = displayRows();
 
-    int startCol = clampToRange((int)floor(view.left()), 0, displayColumns() - 1);
-    int endCol = clampToRange((int)ceil(view.right()), 0, displayColumns());
-    int startRow = clampToRange((int)floor(view.top()), 0, displayRows() - 1);
-    int endRow = clampToRange((int)ceil(view.bottom()), 0, displayRows());
+    int startCol = clampToRange((int)floor(view.left()), 0, columns - 1);
+    int endCol = clampToRange((int)ceil(view.right()), 0, columns);
+    int startRow = clampToRange((int)floor(view.top()), 0, rows - 1);
+    int endRow = clampToRange((int)ceil(view.bottom()), 0, rows);
     double cellWidth = ui->main_windows_label->width() / view.width();
     double cellHeight = ui->main_windows_label->height() / view.height();
+    const int pixelWidth = ui->main_windows_label->width();
+    const int pixelHeight = ui->main_windows_label->height();
+    const bool drawCellText = cellWidth >= 10 && cellHeight >= 10;
+    const std::string blankCell(" ");
 
-    for (int row = startRow; row < endRow; ++row)
-    {
-        for (int col = startCol; col < endCol; ++col)
+    auto cellColor = [this, &colorMap](const std::string& value, int col, int row) {
+        if (isAssistPathDisplayCell(col, row))
         {
-            string ASCII = mapData.value(row).value(col);
-            auto iter = colorMap.find(ASCII);
-            QColor color = isAssistPathDisplayCell(col, row)
-                    ? QColor(165, 165, 165)
-                    : ((iter != colorMap.end()) ? iter->second : Qt::white);
-            QRectF rect((col - view.left()) * cellWidth,
-                        (row - view.top()) * cellHeight,
-                        qCeil(cellWidth) + 0.5,
-                        qCeil(cellHeight) + 0.5);
-            painter.fillRect(rect, color);
+            return QColor(165, 165, 165);
+        }
 
-            if (cellWidth >= 18 && cellHeight >= 14 && ASCII != " ")
+        auto iter = colorMap.find(value);
+        return (iter != colorMap.end()) ? iter->second : QColor(Qt::white);
+    };
+
+    if (!drawCellText)
+    {
+        if (m_mapColorImageDirty ||
+            m_mapColorImage.width() != columns ||
+            m_mapColorImage.height() != rows)
+        {
+            rebuildMapColorImage(colorMap);
+        }
+
+        if (!m_mapColorImage.isNull())
+        {
+            painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+            painter.drawImage(QRectF(0, 0, pixelWidth, pixelHeight), m_mapColorImage, view);
+        }
+    }
+    else
+    {
+        QFont cellFont = painter.font();
+        cellFont.setPointSizeF(qBound(6.0, qMin(cellWidth, cellHeight) * 0.55, 12.0));
+        painter.setFont(cellFont);
+
+        for (int row = startRow; row < endRow; ++row)
+        {
+            const auto rowIter = mapData.constFind(row);
+            if (rowIter == mapData.constEnd())
             {
-                painter.setPen(Qt::black);
-                painter.drawText(rect, Qt::AlignCenter, QString::fromStdString(ASCII));
+                continue;
+            }
+
+            for (int col = startCol; col < endCol; ++col)
+            {
+                const auto cellIter = rowIter.value().constFind(col);
+                const std::string& ASCII = (cellIter == rowIter.value().constEnd()) ? blankCell : cellIter.value();
+                QColor color = cellColor(ASCII, col, row);
+                QRect rect(qFloor((col - view.left()) * cellWidth),
+                           qFloor((row - view.top()) * cellHeight),
+                           qCeil(cellWidth) + 1,
+                           qCeil(cellHeight) + 1);
+                painter.fillRect(rect, color);
+
+                if (ASCII != blankCell)
+                {
+                    painter.setPen(Qt::black);
+                    painter.drawText(rect, Qt::AlignCenter, QString::fromStdString(ASCII));
+                }
             }
         }
     }
@@ -3801,12 +3939,12 @@ void MapTest::renderMainMap()
         for (int col = startCol; col <= endCol; ++col)
         {
             double x = (col - view.left()) * cellWidth;
-            painter.drawLine(QPointF(x, 0), QPointF(x, ui->main_windows_label->height()));
+            painter.drawLine(QPointF(x, 0), QPointF(x, pixelHeight));
         }
         for (int row = startRow; row <= endRow; ++row)
         {
             double y = (row - view.top()) * cellHeight;
-            painter.drawLine(QPointF(0, y), QPointF(ui->main_windows_label->width(), y));
+            painter.drawLine(QPointF(0, y), QPointF(pixelWidth, y));
         }
     }
 
@@ -3831,10 +3969,11 @@ void MapTest::renderMainMap()
     ui->main_windows_label->setPixmap(pixmap);
     ui->main_windows_label->update();
     ui->label->setText("运行时间: " + QString::number(mstimer.nsecsElapsed() / 1000000.0, 'f', 2) + "ms");
+    renderSmallMap(colorMap);
 }
 
 // 重绘小图，以当前选中格为中心显示15x15局部区域。
-void MapTest::renderSmallMap()
+void MapTest::renderSmallMap(const std::unordered_map<std::string, QColor>& colorMap)
 {
     if (m_mapData.isEmpty())
     {
@@ -3843,7 +3982,7 @@ void MapTest::renderSmallMap()
         return;
     }
 
-    DrawSmallMap(ui->small_label, RecordCurrent_x, RecordCurrent_y);
+    DrawSmallMap(ui->small_label, RecordCurrent_x, RecordCurrent_y, colorMap);
     ui->small_label->update();
 }
 
@@ -3853,7 +3992,6 @@ void MapTest::refreshMapViews()
     updateSelectionUi();
     updateRulers();
     renderMainMap();
-    renderSmallMap();
 }
 
 // 刷新大图下方文件名、行号、列号和角度信息。
@@ -4220,6 +4358,7 @@ void MapTest::on_direction_pushButton_clicked()
             m_currentMinorDy = vectors.minor.dy;
             m_pendingPathDisplayCells.clear();
             m_assistPathSourceCells.clear();
+            invalidateMapColorImage();
             updateDirectionButton();
         }
     }
@@ -4249,16 +4388,18 @@ void MapTest::updateRulers()
 void MapTest::rebuildRotatedMap()
 {
     rotate_m_mapData.clear();
+    invalidateMapColorImage();
+
+    if (rodegrees == 0)
+    {
+        return;
+    }
 
     for (int i = 0; i < map_rows; i++)
     {
         for (int j = 0; j < map_columns; j++)
         {
-            if (rodegrees == 0)
-            {
-                rotate_m_mapData[i][j] = m_mapData[i][j];
-            }
-            else if (rodegrees == 90)
+            if (rodegrees == 90)
             {
                 rotate_m_mapData[j][map_rows - 1 - i] = m_mapData[i][j];
             }
@@ -4283,6 +4424,7 @@ void MapTest::resetMapScale()
         rotate_m_mapData.clear();
         m_pendingPathDisplayCells.clear();
         m_assistPathSourceCells.clear();
+        invalidateMapColorImage();
         m_hasStartPoint = false;
         m_referencePointsSource.clear();
         m_hasEditRectStart = false;
@@ -4442,6 +4584,7 @@ void MapTest::on_tableWidget_cellClicked(int row, int column)
 
                     item->setText(color.name());
                     // 输出颜色名称
+                    invalidateMapColorImage();
                     refreshMapViews();
                 }
             }

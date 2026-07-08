@@ -64,6 +64,8 @@ private:
     const double m_maxScaleFactor = 16.0;
     QTimer *m_pTimer;//定时器
     QImage Image;
+    QImage m_mapColorImage;//按当前旋转方向缓存的一格一像素地图
+    bool m_mapColorImageDirty = true;//地图内容/颜色变化后重建缓存图
 
     DrawingThread *m_drawingThread;
 
@@ -172,7 +174,7 @@ private:
 
     void resetMapScale();//恢复原图
 
-    void DrawSmallMap(QLabel* targetLabel, int centerX, int centerY);//绘制小图
+    void DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const std::unordered_map<std::string, QColor>& colorMap);//绘制小图
 
     int displayColumns() const;//当前显示方向下的列数
 
@@ -216,7 +218,7 @@ private:
 
     void renderMainMap();//重绘大图
 
-    void renderSmallMap();//重绘小图
+    void renderSmallMap(const std::unordered_map<std::string, QColor>& colorMap);//重绘小图
 
     void refreshMapViews();//刷新大小图、坐标信息和刻度
 
@@ -227,6 +229,12 @@ private:
     void updateRulers();//根据当前视图刷新刻度尺
 
     void rebuildRotatedMap();//根据旋转角度重建显示地图
+
+    void invalidateMapColorImage();//标记地图缓存图失效
+
+    void rebuildMapColorImage(const std::unordered_map<std::string, QColor>& colorMap);//重建地图缓存图
+
+    bool updateMapColorImagePixel(int displayX, int displayY, const QColor& color);//局部更新地图缓存图像素
 
     bool advanceSearchStep();//启动后推进一步加工/借助路径
 

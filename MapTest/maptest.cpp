@@ -319,8 +319,13 @@ void drawStartMarker(QPainter& painter, const QPointF& center, double radius)
     painter.restore();
 }
 
-// 绘制参考点倒矩形标记，并在内部显示参考点序号。
-void drawReferenceMarker(QPainter& painter, const QPointF& tip, double size, int index)
+// 绘制参考/验证点倒矩形标记，并在内部显示标识。
+void drawReferenceMarker(QPainter& painter,
+                         const QPointF& tip,
+                         double size,
+                         const QString& text,
+                         const QColor& borderColor,
+                         const QColor& fillColor)
 {
     const double halfWidth = size * 0.7;
     const double top = tip.y() - size * 1.35;
@@ -335,17 +340,17 @@ void drawReferenceMarker(QPainter& painter, const QPointF& tip, double size, int
 
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setPen(QPen(QColor(0, 190, 210), 2));
-    painter.setBrush(QColor(210, 255, 255, 190));
+    painter.setPen(QPen(borderColor, 2));
+    painter.setBrush(fillColor);
     painter.drawPolygon(marker);
 
     QFont markerFont = painter.font();
     markerFont.setBold(true);
-    markerFont.setPointSizeF(qBound(8.0, size * 0.55, 13.0));
+    markerFont.setPointSizeF(qBound(6.0, size * 0.36, 10.0));
     painter.setFont(markerFont);
     painter.setPen(Qt::black);
     QRectF textRect(tip.x() - halfWidth, top, halfWidth * 2.0, size);
-    painter.drawText(textRect, Qt::AlignCenter, QString::number(index));
+    painter.drawText(textRect, Qt::AlignCenter, text);
     painter.restore();
 }
 
@@ -1534,11 +1539,15 @@ bool MapTest::loadMapFileFromPath(const QString& filePath, int loadMode)
     m_mapData.clear();
     rotate_m_mapData.clear();
     m_hasStartPoint = false;
-    m_referencePointsSource.clear();
+    m_hasReferencePoint = false;
+    m_hasFoundStartPoint = false;
+    m_isFindingStartPoint = false;
+    m_verifyPointsSource.clear();
     m_hasEditRectStart = false;
     m_hasEditRectEnd = false;
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    clearFindStartRoute();
 
     ReadMapTxtFile();
 
@@ -1973,12 +1982,16 @@ void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& st
     RecordCurrent_x = clampToRange(map_columns / 2, 0, qMax(0, map_columns - 1));
     RecordCurrent_y = clampToRange(map_rows / 2, 0, qMax(0, map_rows - 1));
     m_hasStartPoint = false;
-    m_referencePointsSource.clear();
+    m_hasReferencePoint = false;
+    m_hasFoundStartPoint = false;
+    m_isFindingStartPoint = false;
+    m_verifyPointsSource.clear();
     m_hasEditRectStart = false;
     m_hasEditRectEnd = false;
     m_editSelectionMode = MapEditPoint;
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    clearFindStartRoute();
     invalidateMapColorImage();
     ui->edit_point_radioButton->setChecked(true);
 
@@ -2281,7 +2294,6 @@ QPair<int, int> currenceLength(const QString &filePath, int &mostFrequentLength)
         return qMakePair(lengthFirstLine.value(mostFrequentLength, -1), lengthLastLine.value(mostFrequentLength, -1));
     }
 
-
 //读txt
 void MapTest::ReadMapTxtFile()
 {
@@ -2576,12 +2588,16 @@ void MapTest::ReadMapTxtFile()
     RecordCurrent_x = clampToRange(map_columns / 2, 0, qMax(0, map_columns - 1));
     RecordCurrent_y = clampToRange(map_rows / 2, 0, qMax(0, map_rows - 1));
     m_hasStartPoint = false;
-    m_referencePointsSource.clear();
+    m_hasReferencePoint = false;
+    m_hasFoundStartPoint = false;
+    m_isFindingStartPoint = false;
+    m_verifyPointsSource.clear();
     m_hasEditRectStart = false;
     m_hasEditRectEnd = false;
     m_editSelectionMode = MapEditPoint;
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    clearFindStartRoute();
     invalidateMapColorImage();
     ui->edit_point_radioButton->setChecked(true);
 
@@ -2603,7 +2619,6 @@ void MapTest::ReadMapTxtFile()
     refreshMapViews();
 
 }
-
 
 //事件过滤器
 bool MapTest::eventFilter(QObject* watched, QEvent* event)
@@ -2668,8 +2683,10 @@ bool MapTest::eventFilter(QObject* watched, QEvent* event)
 
                 QMenu menu(this);
                 QAction* setStartAction = menu.addAction(QStringLiteral("设置起点"));
-                QAction* addReferenceAction = menu.addAction(QStringLiteral("添加参考点"));
-                QAction* clearReferencesAction = menu.addAction(QStringLiteral("清空参考点"));
+                QAction* setReferenceAction = menu.addAction(QStringLiteral("设置参考点"));
+                QAction* addVerifyAction = menu.addAction(QStringLiteral("添加验证点"));
+                QAction* clearVerifyAction = menu.addAction(QStringLiteral("清空验证点"));
+                QAction* findStartAction = menu.addAction(QStringLiteral("寻起点"));
                 menu.addSeparator();
                 QAction* resetViewAction = menu.addAction(QStringLiteral("恢复视图"));
 
@@ -2678,13 +2695,21 @@ bool MapTest::eventFilter(QObject* watched, QEvent* event)
                 {
                     setStartPointFromSelection();
                 }
-                else if (selectedAction == addReferenceAction)
+                else if (selectedAction == setReferenceAction)
                 {
-                    addReferencePointFromSelection();
+                    setReferencePointFromSelection();
                 }
-                else if (selectedAction == clearReferencesAction)
+                else if (selectedAction == addVerifyAction)
                 {
-                    clearReferencePoints();
+                    addVerifyPointFromSelection();
+                }
+                else if (selectedAction == clearVerifyAction)
+                {
+                    clearVerifyPoints();
+                }
+                else if (selectedAction == findStartAction)
+                {
+                    findStartPointRoute();
                 }
                 else if (selectedAction == resetViewAction)
                 {
@@ -2763,8 +2788,10 @@ bool MapTest::eventFilter(QObject* watched, QEvent* event)
 
                 QMenu menu(this);
                 QAction* setStartAction = menu.addAction(QStringLiteral("设置起点"));
-                QAction* addReferenceAction = menu.addAction(QStringLiteral("添加参考点"));
-                QAction* clearReferencesAction = menu.addAction(QStringLiteral("清空参考点"));
+                QAction* setReferenceAction = menu.addAction(QStringLiteral("设置参考点"));
+                QAction* addVerifyAction = menu.addAction(QStringLiteral("添加验证点"));
+                QAction* clearVerifyAction = menu.addAction(QStringLiteral("清空验证点"));
+                QAction* findStartAction = menu.addAction(QStringLiteral("寻起点"));
                 menu.addSeparator();
                 QAction* resetViewAction = menu.addAction(QStringLiteral("恢复视图"));
 
@@ -2773,13 +2800,21 @@ bool MapTest::eventFilter(QObject* watched, QEvent* event)
                 {
                     setStartPointFromSelection();
                 }
-                else if (selectedAction == addReferenceAction)
+                else if (selectedAction == setReferenceAction)
                 {
-                    addReferencePointFromSelection();
+                    setReferencePointFromSelection();
                 }
-                else if (selectedAction == clearReferencesAction)
+                else if (selectedAction == addVerifyAction)
                 {
-                    clearReferencePoints();
+                    addVerifyPointFromSelection();
+                }
+                else if (selectedAction == clearVerifyAction)
+                {
+                    clearVerifyPoints();
+                }
+                else if (selectedAction == findStartAction)
+                {
+                    findStartPointRoute();
                 }
                 else if (selectedAction == resetViewAction)
                 {
@@ -2903,9 +2938,12 @@ void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const 
             const auto cellIter = rowIter.value().constFind(mapX);
             const std::string ASCII = (cellIter == rowIter.value().constEnd()) ? std::string(" ") : cellIter.value();
             auto iter = colorMap.find(ASCII);
+            bool isFindStartPath = isFindStartPathDisplayCell(mapX, mapY);
             bool isAssistPath = isAssistPathDisplayCell(mapX, mapY);
 
-            if (isAssistPath) {
+            if (isFindStartPath) {
+                painter.fillRect(rect, QColor(255, 178, 70));
+            } else if (isAssistPath) {
                 painter.fillRect(rect, QColor(165, 165, 165));
             } else if (iter != colorMap.end()) {
                 painter.fillRect(rect, iter->second);
@@ -3015,7 +3053,11 @@ void MapTest::rebuildMapColorImage(const std::unordered_map<std::string, QColor>
         for (int col = 0; col < columns; ++col)
         {
             QColor color;
-            if (isAssistPathDisplayCell(col, row))
+            if (isFindStartPathDisplayCell(col, row))
+            {
+                color = QColor(255, 178, 70);
+            }
+            else if (isAssistPathDisplayCell(col, row))
             {
                 color = QColor(165, 165, 165);
             }
@@ -3316,6 +3358,23 @@ bool MapTest::isAssistPathDisplayCell(int displayX, int displayY) const
     return m_assistPathSourceCells.contains(sourceCellKey(sourceCell.x(), sourceCell.y()));
 }
 
+// 判断显示坐标是否属于寻起点路线。
+bool MapTest::isFindStartPathDisplayCell(int displayX, int displayY) const
+{
+    if (displayX < 0 || displayY < 0 || displayX >= displayColumns() || displayY >= displayRows())
+    {
+        return false;
+    }
+
+    QPoint sourceCell = displayToSourceCell(displayX, displayY);
+    if (sourceCell.x() < 0 || sourceCell.y() < 0 ||
+        sourceCell.x() >= map_columns || sourceCell.y() >= map_rows)
+    {
+        return false;
+    }
+    return m_findStartPathSourceCells.contains(sourceCellKey(sourceCell.x(), sourceCell.y()));
+}
+
 // 将显示坐标换算为原始坐标后标记为借助路径。
 void MapTest::markAssistPathCell(int displayX, int displayY)
 {
@@ -3335,6 +3394,40 @@ void MapTest::markAssistPathCell(int displayX, int displayY)
     {
         invalidateMapColorImage();
     }
+}
+
+// 将显示坐标换算为原始坐标后标记为寻起点已走路线。
+void MapTest::markFindStartPathCell(int displayX, int displayY)
+{
+    if (displayX < 0 || displayY < 0 || displayX >= displayColumns() || displayY >= displayRows())
+    {
+        return;
+    }
+
+    QPoint sourceCell = displayToSourceCell(displayX, displayY);
+    if (sourceCell.x() < 0 || sourceCell.y() < 0 ||
+        sourceCell.x() >= map_columns || sourceCell.y() >= map_rows)
+    {
+        return;
+    }
+    m_findStartPathSourceCells.insert(sourceCellKey(sourceCell.x(), sourceCell.y()));
+    if (!updateMapColorImagePixel(displayX, displayY, QColor(255, 178, 70)))
+    {
+        invalidateMapColorImage();
+    }
+}
+
+// 清空寻起点路线并让地图缓存下次重建。
+void MapTest::clearFindStartRoute()
+{
+    if (m_findStartPathSourceCells.isEmpty() && m_pendingFindStartDisplayCells.isEmpty())
+    {
+        return;
+    }
+
+    m_findStartPathSourceCells.clear();
+    m_pendingFindStartDisplayCells.clear();
+    invalidateMapColorImage();
 }
 
 // 更新当前选中格，并按需要居中和刷新大小图。
@@ -3376,11 +3469,13 @@ void MapTest::setStartPointFromSelection()
     sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
     m_startPointSource = sourceCell;
     m_hasStartPoint = true;
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
     refreshMapViews();
 }
 
-// 将当前选中格追加为参考点，重复点不再重复添加。
-void MapTest::addReferencePointFromSelection()
+// 将当前选中格保存为参考点，参考点只能保留一个。
+void MapTest::setReferencePointFromSelection()
 {
     if (m_mapData.isEmpty())
     {
@@ -3390,21 +3485,263 @@ void MapTest::addReferencePointFromSelection()
     QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
     sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
     sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
-    if (!m_referencePointsSource.contains(sourceCell))
-    {
-        m_referencePointsSource.append(sourceCell);
-    }
+    m_referencePointSource = sourceCell;
+    m_hasReferencePoint = true;
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
     refreshMapViews();
 }
 
-// 清空所有参考点并刷新地图标记。
-void MapTest::clearReferencePoints()
+// 将当前选中格追加为验证点，重复点不再重复添加。
+void MapTest::addVerifyPointFromSelection()
 {
-    m_referencePointsSource.clear();
+    if (m_mapData.isEmpty())
+    {
+        return;
+    }
+
+    QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
+    sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
+    sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
+    if (!m_verifyPointsSource.contains(sourceCell))
+    {
+        m_verifyPointsSource.append(sourceCell);
+    }
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
     refreshMapViews();
 }
 
-// 在大图可见区域内绘制起点和参考点标记。
+// 清空所有验证点并刷新地图标记。
+void MapTest::clearVerifyPoints()
+{
+    m_verifyPointsSource.clear();
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
+    refreshMapViews();
+}
+
+// 按参考点、验证点和起点生成寻起点路径，并按定时器逐格执行。
+void MapTest::findStartPointRoute()
+{
+    if (m_mapData.isEmpty())
+    {
+        return;
+    }
+    if (m_pTimer->isActive())
+    {
+        return;
+    }
+    if (!m_hasReferencePoint)
+    {
+        QMessageBox::warning(this, QStringLiteral("寻起点"), QStringLiteral("请先设置参考点。"));
+        return;
+    }
+    if (!m_hasStartPoint)
+    {
+        QMessageBox::warning(this, QStringLiteral("寻起点"), QStringLiteral("请先设置起点。"));
+        return;
+    }
+
+    QVector<QPoint> routePoints;
+    routePoints.append(m_referencePointSource);
+    for (const QPoint& verifyPoint : m_verifyPointsSource)
+    {
+        routePoints.append(verifyPoint);
+    }
+    routePoints.append(m_startPointSource);
+
+    std::unordered_map<std::string, int> checkedRows = checkedTargetRows();
+    std::unordered_set<std::string> targetSet;
+    for (const auto& checkedRow : checkedRows)
+    {
+        targetSet.insert(checkedRow.first);
+    }
+
+    auto buildSmartSegment = [this, &targetSet](const QPoint& from, const QPoint& to) {
+        QVector<QPoint> path;
+        const QMap<int, QMap<int, string>>& mapData = currentMapData();
+        const int rows = displayRows();
+        const int columns = displayColumns();
+        if (rows <= 0 || columns <= 0)
+        {
+            return path;
+        }
+
+        QPoint start(clampToRange(from.x(), 0, columns - 1),
+                     clampToRange(from.y(), 0, rows - 1));
+        QPoint target(clampToRange(to.x(), 0, columns - 1),
+                      clampToRange(to.y(), 0, rows - 1));
+        if (start == target)
+        {
+            return path;
+        }
+
+        auto stepCost = [&](int row, int col) {
+            if ((row == target.y() && col == target.x()) ||
+                (row == start.y() && col == start.x()))
+            {
+                return 1;
+            }
+
+            std::string value = mapData.value(row).value(col, std::string(" "));
+            if (value == "#" || targetSet.find(value) != targetSet.end())
+            {
+                return 1;
+            }
+            if (value != " ")
+            {
+                return targetSet.empty() ? 2 : 7;
+            }
+            return 20;
+        };
+
+        struct QueueNode
+        {
+            int priority;
+            int cost;
+            int order;
+            int row;
+            int col;
+            bool operator<(const QueueNode& other) const
+            {
+                if (priority != other.priority)
+                {
+                    return priority > other.priority;
+                }
+                return order > other.order;
+            }
+        };
+
+        MapDirectionVectors vectors = directionVectors(m_selectedDirection);
+        QVector<DirectionVector> neighbors;
+        auto addNeighbor = [&neighbors](const DirectionVector& vector) {
+            if (vector.dx == 0 && vector.dy == 0)
+            {
+                return;
+            }
+            for (const DirectionVector& existing : neighbors)
+            {
+                if (existing.dx == vector.dx && existing.dy == vector.dy)
+                {
+                    return;
+                }
+            }
+            neighbors.append(vector);
+        };
+        addNeighbor(vectors.minor);
+        addNeighbor(vectors.major);
+        addNeighbor(negateVector(vectors.minor));
+        addNeighbor(negateVector(vectors.major));
+        addNeighbor(DirectionVector{1, 0});
+        addNeighbor(DirectionVector{0, 1});
+        addNeighbor(DirectionVector{-1, 0});
+        addNeighbor(DirectionVector{0, -1});
+
+        auto heuristic = [&target](int row, int col) {
+            return qAbs(target.y() - row) + qAbs(target.x() - col);
+        };
+
+        QVector<QVector<int>> distance(rows, QVector<int>(columns, INT_MAX));
+        QVector<QVector<QPoint>> parent(rows, QVector<QPoint>(columns, QPoint(-1, -1)));
+        std::priority_queue<QueueNode> queue;
+        int visitOrder = 0;
+        bool found = false;
+
+        distance[start.y()][start.x()] = 0;
+        queue.push({heuristic(start.y(), start.x()), 0, visitOrder++, start.y(), start.x()});
+        while (!queue.empty() && !found)
+        {
+            QueueNode current = queue.top();
+            queue.pop();
+            if (current.cost != distance[current.row][current.col])
+            {
+                continue;
+            }
+
+            for (const DirectionVector& neighbor : neighbors)
+            {
+                int nextCol = current.col + neighbor.dx;
+                int nextRow = current.row + neighbor.dy;
+                if (nextCol < 0 || nextCol >= columns || nextRow < 0 || nextRow >= rows)
+                {
+                    continue;
+                }
+
+                int nextCost = current.cost + stepCost(nextRow, nextCol);
+                if (nextCost >= distance[nextRow][nextCol])
+                {
+                    continue;
+                }
+
+                distance[nextRow][nextCol] = nextCost;
+                parent[nextRow][nextCol] = QPoint(current.col, current.row);
+                if (nextRow == target.y() && nextCol == target.x())
+                {
+                    found = true;
+                    break;
+                }
+                queue.push({nextCost + heuristic(nextRow, nextCol), nextCost, visitOrder++, nextRow, nextCol});
+            }
+        }
+
+        if (!found)
+        {
+            return path;
+        }
+
+        QVector<QPoint> reversedPath;
+        QPoint cursor = target;
+        while (cursor != start && cursor.x() >= 0 && cursor.y() >= 0)
+        {
+            reversedPath.append(cursor);
+            cursor = parent[cursor.y()][cursor.x()];
+        }
+        for (int i = reversedPath.size() - 1; i >= 0; --i)
+        {
+            path.append(reversedPath.at(i));
+        }
+        return path;
+    };
+
+    QVector<QPoint> pendingPath;
+    for (int i = 1; i < routePoints.size(); ++i)
+    {
+        QPoint from = sourceToDisplayCell(routePoints.at(i - 1).x(), routePoints.at(i - 1).y());
+        QPoint to = sourceToDisplayCell(routePoints.at(i).x(), routePoints.at(i).y());
+        QVector<QPoint> segment = buildSmartSegment(from, to);
+        if (segment.isEmpty() && from != to)
+        {
+            QMessageBox::warning(this, QStringLiteral("寻起点"), QStringLiteral("无法生成从第%1个点到第%2个点的路线。").arg(i).arg(i + 1));
+            return;
+        }
+        pendingPath += segment;
+    }
+
+    clearFindStartRoute();
+    m_pendingFindStartDisplayCells = pendingPath;
+    m_hasFoundStartPoint = false;
+    m_isFindingStartPoint = true;
+
+    QPoint referenceDisplayCell = sourceToDisplayCell(m_referencePointSource.x(), m_referencePointSource.y());
+    markFindStartPathCell(referenceDisplayCell.x(), referenceDisplayCell.y());
+    setSelectedCell(referenceDisplayCell.x(), referenceDisplayCell.y(), true, false);
+    invalidateMapColorImage();
+    refreshMapViews();
+
+    if (m_pendingFindStartDisplayCells.isEmpty())
+    {
+        m_isFindingStartPoint = false;
+        m_hasFoundStartPoint = true;
+        ui->label->setText(QStringLiteral("已寻到起点"));
+        return;
+    }
+
+    setMapFunctionPanelRunning(true);
+    m_pTimer->start(100);
+}
+
+// 在大图可见区域内绘制起点、参考点和验证点标记。
 void MapTest::drawMainMapMarkers(QPainter& painter, const QRectF& view, double cellWidth, double cellHeight)
 {
     auto drawCellStart = [&](const QPoint& sourceCell) {
@@ -3421,7 +3758,10 @@ void MapTest::drawMainMapMarkers(QPainter& painter, const QRectF& view, double c
         drawStartMarker(painter, center, radius);
     };
 
-    auto drawCellReference = [&](const QPoint& sourceCell, int index) {
+    auto drawCellMarker = [&](const QPoint& sourceCell,
+                              const QString& text,
+                              const QColor& borderColor,
+                              const QColor& fillColor) {
         QPoint displayCell = sourceToDisplayCell(sourceCell.x(), sourceCell.y());
         if (displayCell.x() < view.left() || displayCell.x() >= view.right() ||
             displayCell.y() < view.top() || displayCell.y() >= view.bottom())
@@ -3432,7 +3772,7 @@ void MapTest::drawMainMapMarkers(QPainter& painter, const QRectF& view, double c
         QPointF tip((displayCell.x() + 0.5 - view.left()) * cellWidth,
                     (displayCell.y() + 0.5 - view.top()) * cellHeight);
         double size = qBound(12.0, qMin(cellWidth, cellHeight) * 0.9, 30.0);
-        drawReferenceMarker(painter, tip, size, index);
+        drawReferenceMarker(painter, tip, size, text, borderColor, fillColor);
     };
 
     if (m_hasStartPoint)
@@ -3440,13 +3780,24 @@ void MapTest::drawMainMapMarkers(QPainter& painter, const QRectF& view, double c
         drawCellStart(m_startPointSource);
     }
 
-    for (int i = 0; i < m_referencePointsSource.size(); ++i)
+    if (m_hasReferencePoint)
     {
-        drawCellReference(m_referencePointsSource.at(i), i + 1);
+        drawCellMarker(m_referencePointSource,
+                       QStringLiteral("参"),
+                       QColor(20, 155, 80),
+                       QColor(205, 255, 220, 210));
+    }
+
+    for (int i = 0; i < m_verifyPointsSource.size(); ++i)
+    {
+        drawCellMarker(m_verifyPointsSource.at(i),
+                       QStringLiteral("验%1").arg(i + 1),
+                       QColor(0, 190, 210),
+                       QColor(210, 255, 255, 190));
     }
 }
 
-// 在小图15格视野内绘制起点和参考点标记。
+// 在小图15格视野内绘制起点、参考点和验证点标记。
 void MapTest::drawSmallMapMarkers(QPainter& painter, int startX, int startY, double cellWidth, double cellHeight, int cellCount)
 {
     auto visibleCenter = [&](const QPoint& sourceCell, QPointF& center) {
@@ -3468,12 +3819,28 @@ void MapTest::drawSmallMapMarkers(QPainter& painter, int startX, int startY, dou
         drawStartMarker(painter, center, radius);
     }
 
-    for (int i = 0; i < m_referencePointsSource.size(); ++i)
+    if (m_hasReferencePoint && visibleCenter(m_referencePointSource, center))
     {
-        if (visibleCenter(m_referencePointsSource.at(i), center))
+        double size = qBound(10.0, qMin(cellWidth, cellHeight) * 0.85, 26.0);
+        drawReferenceMarker(painter,
+                            center,
+                            size,
+                            QStringLiteral("参"),
+                            QColor(20, 155, 80),
+                            QColor(205, 255, 220, 210));
+    }
+
+    for (int i = 0; i < m_verifyPointsSource.size(); ++i)
+    {
+        if (visibleCenter(m_verifyPointsSource.at(i), center))
         {
             double size = qBound(10.0, qMin(cellWidth, cellHeight) * 0.85, 26.0);
-            drawReferenceMarker(painter, center, size, i + 1);
+            drawReferenceMarker(painter,
+                                center,
+                                size,
+                                QStringLiteral("验%1").arg(i + 1),
+                                QColor(0, 190, 210),
+                                QColor(210, 255, 255, 190));
         }
     }
 }
@@ -3697,6 +4064,8 @@ void MapTest::applyEditToSelection(const QString& newValue)
     updateTableCountsFromMapData();
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
     invalidateMapColorImage();
     m_hasEditRectStart = false;
     m_hasEditRectEnd = false;
@@ -3875,6 +4244,10 @@ void MapTest::renderMainMap()
     const std::string blankCell(" ");
 
     auto cellColor = [this, &colorMap](const std::string& value, int col, int row) {
+        if (isFindStartPathDisplayCell(col, row))
+        {
+            return QColor(255, 178, 70);
+        }
         if (isAssistPathDisplayCell(col, row))
         {
             return QColor(165, 165, 165);
@@ -4018,12 +4391,12 @@ void MapTest::updateSelectionUi()
     updateEditSelectionUi();
 }
 
-// 刷新起点和参考点坐标显示。
+// 刷新参考点、验证点和起点坐标显示。
 void MapTest::updatePointAlignmentUi()
 {
     if (m_mapData.isEmpty())
     {
-        ui->point_alignment_info_label->setText(QStringLiteral("起点：--, --\n参考点1：--, --"));
+        ui->point_alignment_info_label->setText(QStringLiteral("参考点：--, --\n验证点1：--, --\n起点：--, --"));
         return;
     }
 
@@ -4033,21 +4406,25 @@ void MapTest::updatePointAlignmentUi()
     };
 
     QStringList lines;
-    lines << QStringLiteral("起点：%1").arg(m_hasStartPoint
-                                            ? coordinateText(m_startPointSource)
-                                            : QStringLiteral("--, --"));
+    lines << QStringLiteral("参考点：%1").arg(m_hasReferencePoint
+                                             ? coordinateText(m_referencePointSource)
+                                             : QStringLiteral("--, --"));
 
-    if (m_referencePointsSource.isEmpty())
+    if (m_verifyPointsSource.isEmpty())
     {
-        lines << QStringLiteral("参考点1：--, --");
+        lines << QStringLiteral("验证点1：--, --");
     }
     else
     {
-        for (int i = 0; i < m_referencePointsSource.size(); ++i)
+        for (int i = 0; i < m_verifyPointsSource.size(); ++i)
         {
-            lines << QStringLiteral("参考点%1：%2").arg(i + 1).arg(coordinateText(m_referencePointsSource.at(i)));
+            lines << QStringLiteral("验证点%1：%2").arg(i + 1).arg(coordinateText(m_verifyPointsSource.at(i)));
         }
     }
+
+    lines << QStringLiteral("起点：%1").arg(m_hasStartPoint
+                                            ? coordinateText(m_startPointSource)
+                                            : QStringLiteral("--, --"));
 
     ui->point_alignment_info_label->setText(lines.join(QStringLiteral("\n")));
 }
@@ -4066,10 +4443,23 @@ void MapTest::setupMapFunctionPanel()
 {
     connect(ui->map_function_comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int index) {
-        ui->map_function_stack->setCurrentIndex(index);
+        QWidget* targetPage = ui->setting_page;
+        if (index == 1)
+        {
+            targetPage = ui->point_page;
+        }
+        else if (index == 2)
+        {
+            targetPage = ui->path_page;
+        }
+        else if (index == 3)
+        {
+            targetPage = ui->param_page;
+        }
+        ui->map_function_stack->setCurrentWidget(targetPage);
 
         // 离开Map编辑页时恢复点选，避免圆选/框选的图形一直残留在地图上。
-        const bool leaveEditPage = index != ui->map_function_stack->indexOf(ui->param_page);
+        const bool leaveEditPage = targetPage != ui->param_page;
         if (leaveEditPage && m_editSelectionMode != MapEditPoint)
         {
             m_hasEditRectStart = false;
@@ -4199,8 +4589,10 @@ void MapTest::setupMapFunctionPanel()
     });
 
     connect(ui->set_start_point_pushButton, &QPushButton::clicked, this, &MapTest::setStartPointFromSelection);
-    connect(ui->ref_point_pushButton, &QPushButton::clicked, this, &MapTest::addReferencePointFromSelection);
-    connect(ui->clear_reference_points_pushButton, &QPushButton::clicked, this, &MapTest::clearReferencePoints);
+    connect(ui->set_reference_point_pushButton, &QPushButton::clicked, this, &MapTest::setReferencePointFromSelection);
+    connect(ui->ref_point_pushButton, &QPushButton::clicked, this, &MapTest::addVerifyPointFromSelection);
+    connect(ui->clear_reference_points_pushButton, &QPushButton::clicked, this, &MapTest::clearVerifyPoints);
+    connect(ui->find_start_pushButton, &QPushButton::clicked, this, &MapTest::findStartPointRoute);
 
     connect(ui->edit_point_radioButton, &QRadioButton::toggled, this, [this](bool checked) {
         if (checked)
@@ -4256,8 +4648,10 @@ void MapTest::setMapFunctionPanelRunning(bool running)
     ui->start_pushButton->setEnabled(!running);
     ui->first_target_pushButton->setEnabled(!running);
     ui->set_start_point_pushButton->setEnabled(!running);
+    ui->set_reference_point_pushButton->setEnabled(!running);
     ui->ref_point_pushButton->setEnabled(!running);
     ui->clear_reference_points_pushButton->setEnabled(!running);
+    ui->find_start_pushButton->setEnabled(!running);
     ui->edit_point_radioButton->setEnabled(!running);
     ui->edit_rect_radioButton->setEnabled(!running);
     ui->edit_circle_radioButton->setEnabled(!running);
@@ -4358,6 +4752,7 @@ void MapTest::on_direction_pushButton_clicked()
             m_currentMinorDy = vectors.minor.dy;
             m_pendingPathDisplayCells.clear();
             m_assistPathSourceCells.clear();
+            clearFindStartRoute();
             invalidateMapColorImage();
             updateDirectionButton();
         }
@@ -4424,9 +4819,13 @@ void MapTest::resetMapScale()
         rotate_m_mapData.clear();
         m_pendingPathDisplayCells.clear();
         m_assistPathSourceCells.clear();
+        clearFindStartRoute();
         invalidateMapColorImage();
         m_hasStartPoint = false;
-        m_referencePointsSource.clear();
+        m_hasReferencePoint = false;
+        m_hasFoundStartPoint = false;
+        m_isFindingStartPoint = false;
+        m_verifyPointsSource.clear();
         m_hasEditRectStart = false;
         m_hasEditRectEnd = false;
         ui->tableWidget->setRowCount(0);
@@ -4500,6 +4899,8 @@ void MapTest::on_rotate_clicked()
     QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
     rodegrees = (rodegrees + 90) % 360;
     rebuildRotatedMap();
 
@@ -4593,7 +4994,6 @@ void MapTest::on_tableWidget_cellClicked(int row, int column)
 
 
 }
-
 
 // 智能借助：终点仍由原路径规则决定；不加工/空白区域按高代价处理，只有绕路太远时才借助。
 QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_mapDat,
@@ -4865,12 +5265,23 @@ void MapTest::on_start_pushButton_clicked()
     {
         return;
     }
+    if (m_isFindingStartPoint)
+    {
+        QMessageBox::warning(this, QStringLiteral("路径规划"), QStringLiteral("正在寻起点，请等待完成后再开始路径规划。"));
+        return;
+    }
+    if (!m_hasFoundStartPoint)
+    {
+        QMessageBox::warning(this, QStringLiteral("路径规划"), QStringLiteral("请先点击“寻起点”，走到起点后再开始路径规划。"));
+        return;
+    }
 
     MapDirectionVectors vectors = directionVectors(m_selectedDirection);
     m_currentMinorDx = vectors.minor.dx;
     m_currentMinorDy = vectors.minor.dy;
     m_pendingPathDisplayCells.clear();
     m_assistPathSourceCells.clear();
+    clearFindStartRoute();
 
     if (m_hasStartPoint)
     {
@@ -4924,6 +5335,12 @@ void MapTest::on_stop_pushButton_clicked()
 {
 
     m_pTimer->stop();
+    if (m_isFindingStartPoint)
+    {
+        m_isFindingStartPoint = false;
+        m_hasFoundStartPoint = false;
+        clearFindStartRoute();
+    }
     setMapFunctionPanelRunning(false);
     refreshMapViews();
 }
@@ -4931,6 +5348,16 @@ void MapTest::on_stop_pushButton_clicked()
 // 定时器回调：每次推进一步，找不到目标时自动停止。
 void MapTest::handleTimeout()
 {
+    if (m_isFindingStartPoint)
+    {
+        if (!advanceFindStartStep())
+        {
+            m_pTimer->stop();
+            setMapFunctionPanelRunning(false);
+        }
+        return;
+    }
+
     if (!advanceSearchStep())
     {
         m_pTimer->stop();
@@ -4938,6 +5365,32 @@ void MapTest::handleTimeout()
         qDebug() << "没有找到目标字符的路径。";
         return;
     }
+}
+
+// 寻起点时每次走一格，走到起点后才允许开始路径规划。
+bool MapTest::advanceFindStartStep()
+{
+    if (m_mapData.isEmpty() || m_pendingFindStartDisplayCells.isEmpty())
+    {
+        m_isFindingStartPoint = false;
+        return false;
+    }
+
+    QPoint nextDisplayCell = m_pendingFindStartDisplayCells.takeFirst();
+    markFindStartPathCell(nextDisplayCell.x(), nextDisplayCell.y());
+    setSelectedCell(nextDisplayCell.x(), nextDisplayCell.y(), true, false);
+
+    if (m_pendingFindStartDisplayCells.isEmpty())
+    {
+        m_isFindingStartPoint = false;
+        m_hasFoundStartPoint = true;
+        refreshMapViews();
+        ui->label->setText(QStringLiteral("已寻到起点"));
+        return false;
+    }
+
+    refreshMapViews();
+    return true;
 }
 
 // 处理当前点并推进到下一步；需要借助路径时先走灰色借助格。

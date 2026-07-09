@@ -339,12 +339,12 @@ color: rgb(255, 255, 0);</string>
      </item>
      <item>
       <property name="text">
-       <string>Map路径规划</string>
+       <string>Map地图对点</string>
       </property>
      </item>
      <item>
       <property name="text">
-       <string>Map地图对点</string>
+       <string>Map路径规划</string>
       </property>
      </item>
      <item>
@@ -601,27 +601,6 @@ color: rgb(255, 255, 0);</string>
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>40</y>
-         <width>340</width>
-         <height>34</height>
-        </rect>
-       </property>
-       <property name="font">
-        <font>
-         <family>SimSun</family>
-         <pointsize>12</pointsize>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>添加参考点</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="clear_reference_points_pushButton">
-       <property name="geometry">
-        <rect>
-         <x>0</x>
          <y>80</y>
          <width>340</width>
          <height>34</height>
@@ -636,14 +615,77 @@ color: rgb(255, 255, 0);</string>
         </font>
        </property>
        <property name="text">
-        <string>清空参考点</string>
+        <string>添加验证点</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="set_reference_point_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>40</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>设置参考点</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="clear_reference_points_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>120</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>清空验证点</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="find_start_pushButton">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>160</y>
+         <width>340</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <family>SimSun</family>
+         <pointsize>12</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>寻起点</string>
        </property>
       </widget>
       <widget class="QLabel" name="point_alignment_title_label">
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>130</y>
+         <y>210</y>
          <width>340</width>
          <height>30</height>
         </rect>
@@ -667,9 +709,9 @@ color: rgb(255, 255, 0);</string>
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>166</y>
+         <y>246</y>
          <width>340</width>
-         <height>300</height>
+         <height>220</height>
         </rect>
        </property>
        <property name="font">

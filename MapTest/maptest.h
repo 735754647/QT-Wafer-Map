@@ -106,7 +106,11 @@ private:
     int m_currentMinorDy = 0;//当前次方向Y，蛇形换列后会更新
     bool m_hasStartPoint = false;//是否已经设置起点
     QPoint m_startPointSource;//起点，使用原始地图坐标保存
-    QVector<QPoint> m_referencePointsSource;//参考点，使用原始地图坐标保存
+    bool m_hasReferencePoint = false;//是否已经设置参考点
+    QPoint m_referencePointSource;//参考点，只能设置一个，使用原始地图坐标保存
+    QVector<QPoint> m_verifyPointsSource;//验证点，使用原始地图坐标保存
+    bool m_hasFoundStartPoint = false;//是否已经按参考点和验证点寻到起点
+    bool m_isFindingStartPoint = false;//是否正在执行寻起点步进
     MapEditSelectionMode m_editSelectionMode = MapEditPoint;//地图编辑选择方式
     bool m_hasEditRectStart = false;//框选左上点是否已设置
     bool m_hasEditRectEnd = false;//框选右下点是否已设置
@@ -127,6 +131,8 @@ private:
     QString m_lastScanSearchPath;//手动扫码上次选择的搜索目录
     QVector<QPoint> m_pendingPathDisplayCells;//启动后待走的显示坐标路径
     QSet<qint64> m_assistPathSourceCells;//借助路径，保存原始地图坐标
+    QVector<QPoint> m_pendingFindStartDisplayCells;//寻起点待走的显示坐标路径
+    QSet<qint64> m_findStartPathSourceCells;//已经走过的寻起点路线，保存原始地图坐标
 
 private slots:
     void handleTimeout();
@@ -206,7 +212,13 @@ private:
 
     bool isAssistPathDisplayCell(int displayX, int displayY) const;//判断显示坐标是否为借助路径
 
+    bool isFindStartPathDisplayCell(int displayX, int displayY) const;//判断显示坐标是否为寻起点路线
+
     void markAssistPathCell(int displayX, int displayY);//将显示坐标标记为灰色借助路径
+
+    void markFindStartPathCell(int displayX, int displayY);//将显示坐标标记为橙色寻起点路线
+
+    void clearFindStartRoute();//清空寻起点路线
 
     void setSelectedCell(int x, int y, bool centerView, bool refresh = true);//更新当前选中格
 
@@ -224,7 +236,7 @@ private:
 
     void updateSelectionUi();//刷新大图下方文件/行列/角度信息
 
-    void updatePointAlignmentUi();//刷新起点和参考点坐标显示
+    void updatePointAlignmentUi();//刷新参考点、验证点和起点坐标显示
 
     void updateRulers();//根据当前视图刷新刻度尺
 
@@ -238,6 +250,8 @@ private:
 
     bool advanceSearchStep();//启动后推进一步加工/借助路径
 
+    bool advanceFindStartStep();//寻起点时推进一步
+
     void updateDirectionButton();//刷新方向按钮文字和图标
 
     void setupMapFunctionPanel();//初始化右侧Map功能区信号
@@ -246,13 +260,17 @@ private:
 
     void setStartPointFromSelection();//把当前选中格设置为起点
 
-    void addReferencePointFromSelection();//把当前选中格加入参考点
+    void setReferencePointFromSelection();//把当前选中格设置为参考点
 
-    void clearReferencePoints();//清空参考点
+    void addVerifyPointFromSelection();//把当前选中格加入验证点
 
-    void drawMainMapMarkers(QPainter& painter, const QRectF& view, double cellWidth, double cellHeight);//绘制大图起点/参考点
+    void clearVerifyPoints();//清空验证点
 
-    void drawSmallMapMarkers(QPainter& painter, int startX, int startY, double cellWidth, double cellHeight, int cellCount);//绘制小图起点/参考点
+    void findStartPointRoute();//按参考点、验证点、起点生成寻起点路线
+
+    void drawMainMapMarkers(QPainter& painter, const QRectF& view, double cellWidth, double cellHeight);//绘制大图起点/参考点/验证点
+
+    void drawSmallMapMarkers(QPainter& painter, int startX, int startY, double cellWidth, double cellHeight, int cellCount);//绘制小图起点/参考点/验证点
 
     void updateEditSelectionUi();//刷新Map编辑坐标显示
 

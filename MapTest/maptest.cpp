@@ -19,12 +19,15 @@
 #include <QDirIterator>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QRandomGenerator>
+#include <QResizeEvent>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyle>
@@ -37,14 +40,12 @@
 namespace
 {
 const int MaxLoadBinCharCount = 4;
-
-enum MapLoadMode
-{
-    DefaultLoadMode = 0,
-    CsvLoadMode = 1,
-    CustomLoadMode = 2,
-    ExcelLoadMode = 3
-};
+const int RulerThickness = 35;
+const int ModuleVerticalGap = 20;
+const int StatusVerticalGap = 15;
+const std::string ProcessedCellValue = "\x1D" "PROCESSED";// 内部搜索标记，不显示
+const QString ProcessedCellText = QStringLiteral("已加工");
+const QColor ProcessedCellColor = Qt::white;
 
 // 将方向枚举转换成按钮、弹窗中显示的中文说明。
 QString directionText(Direction direction)
@@ -889,6 +890,24 @@ bool readWaferMapRows(const QString& filePath, QVector<QByteArray>& rows, MapLoa
 
 }
 
+QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_mapDat,
+                                        const std::vector<string>& targetChars,
+                                        Direction direction,
+                                        int startRow,
+                                        int startCol,
+                                        int targetRow,
+                                        int targetCol,
+                                        int currentMinorDx,
+                                        int currentMinorDy);
+
+std::pair<int, int> traverseSMatrix(const QMap<int, QMap<int, string>>& m_mapDat,
+                                    const std::vector<string>& targetChars,
+                                    Direction direction,
+                                    int startRow,
+                                    int startCol,
+                                    int& currentMinorDx,
+                                    int& currentMinorDy);
+
 // 初始化界面控件、地图事件过滤器、刻度尺和功能区信号。
 MapTest::MapTest(QWidget* parent)
 	: QMainWindow(parent)
@@ -896,44 +915,40 @@ MapTest::MapTest(QWidget* parent)
 {
 	ui->setupUi(this);
 
-	ui->small_label->installEventFilter(this);
-    ui->main_windows_label->installEventFilter(this);
     ui->main_windows_label->setMouseTracking(true);
     ui->small_label->setMouseTracking(true);
     ui->main_windows_label->setFocusPolicy(Qt::StrongFocus);
-
     ui->main_windows_label->setScaledContents(false);
-    ui->main_windows_label->setFixedWidth(mapwidth);
-    ui->main_windows_label->setFixedHeight(mapheight);
+    setupMapTableView();
+    captureSmallMapChildLayoutBase();
 
-    BigMapHorizontalslider = new RulerSlider(Qt::Horizontal,this);
-    BigMapHorizontalslider->setFixedSize(mapwidth,35);//设置长宽
+    BigMapHorizontalslider = new RulerSlider(Qt::Horizontal, ui->centralwidget);
     BigMapHorizontalslider->setSingleStep(1);//刻度之间的距离
     BigMapHorizontalslider->setRulerSliderRange(0,200);//设置刻度范围
     BigMapHorizontalslider->setRulerSliderValue(200);//设置当前值
-    BigMapHorizontalslider->move(0,mapheight);//移动
 
-    BigMapVerticalslider = new RulerSlider(Qt::Vertical,this);
-    BigMapVerticalslider->setFixedSize(35,mapheight);//设置长宽
+    BigMapVerticalslider = new RulerSlider(Qt::Vertical, ui->centralwidget);
     BigMapVerticalslider->setSingleStep(1);//刻度之间的距离
     BigMapVerticalslider->setRulerSliderRange(0,200);//设置刻度范围
     BigMapVerticalslider->setRulerSliderValue(200);//设置当前值
-    BigMapVerticalslider->move(mapwidth,0);//移动
 
 
-    SmallMapHorizontalslider = new RulerSlider(Qt::Horizontal,this);
-    SmallMapHorizontalslider->setFixedSize(ui->small_label->width(),35);//设置长宽
+    SmallMapHorizontalslider = new RulerSlider(Qt::Horizontal, ui->centralwidget);
     SmallMapHorizontalslider->setSingleStep(1);//刻度之间的距离
     SmallMapHorizontalslider->setRulerSliderRange(0,15);//设置刻度范围
     SmallMapHorizontalslider->setRulerSliderValue(15);//设置当前值
-    SmallMapHorizontalslider->move(ui->small_label->geometry().x(),ui->small_label->height()+ui->small_label->geometry().y());//移动
 
-    SmallMapVerticalslider = new RulerSlider(Qt::Vertical,this);
-    SmallMapVerticalslider->setFixedSize(35,ui->small_label->height());//设置长宽
+    SmallMapVerticalslider = new RulerSlider(Qt::Vertical, ui->centralwidget);
     SmallMapVerticalslider->setSingleStep(1);//刻度之间的距离
     SmallMapVerticalslider->setRulerSliderRange(0,15);//设置刻度范围
     SmallMapVerticalslider->setRulerSliderValue(15);//设置当前值
-    SmallMapVerticalslider->move(ui->small_label->width()+ui->small_label->geometry().x(),ui->small_label->geometry().y());//移动
+
+    syncMapWidgetGeometry();
+
+	ui->small_label->installEventFilter(this);
+    ui->main_windows_label->installEventFilter(this);
+    ui->big_map_module->installEventFilter(this);
+    ui->small_map_module->installEventFilter(this);
 
     m_drawingThread = new DrawingThread(ui->tableWidget,m_mapData,map_columns,map_rows,map_columns, map_rows,this);
 
@@ -949,18 +964,9 @@ MapTest::MapTest(QWidget* parent)
 // 释放界面、刻度尺和绘图线程资源。
 MapTest::~MapTest()
 {
-    delete ui;
-
-    delete BigMapHorizontalslider;
     BigMapHorizontalslider=NULL;
-
-    delete BigMapVerticalslider;
     BigMapVerticalslider=NULL;
-
-    delete SmallMapHorizontalslider;
     SmallMapHorizontalslider=NULL;
-
-    delete SmallMapVerticalslider;
     SmallMapVerticalslider=NULL;
 
     if (m_drawingThread)
@@ -969,6 +975,626 @@ MapTest::~MapTest()
             m_drawingThread->wait();
             delete m_drawingThread;
         }
+
+    delete ui;
+}
+
+// 对外接口：按公开枚举加载地图。
+bool MapTest::loadMapFile(const QString& filePath, MapLoadMode loadMode)
+{
+    return loadMapFile(filePath, static_cast<int>(loadMode));
+}
+
+// 对外接口：按路径加载地图。
+bool MapTest::loadMapFile(const QString& filePath, int loadMode)
+{
+    return loadMapFileFromPath(filePath, loadMode);
+}
+
+// 对外接口：按扫码内容查找地图文件。
+QString MapTest::searchMapFileByScanText(const QString& scanText, const QStringList& searchRoots) const
+{
+    return findMapFileByScanText(scanText, searchRoots);
+}
+
+// 对外接口：按扫码内容查找并加载地图。
+bool MapTest::loadMapByScanText(const QString& scanText,
+                                const QStringList& searchRoots,
+                                MapLoadMode loadMode,
+                                QString* matchedFilePath)
+{
+    const QString mapFilePath = searchMapFileByScanText(scanText, searchRoots);
+    if (matchedFilePath)
+    {
+        *matchedFilePath = mapFilePath;
+    }
+    if (mapFilePath.isEmpty())
+    {
+        return false;
+    }
+
+    return loadMapFile(mapFilePath, loadMode);
+}
+
+// 对外接口：地图是否已加载。
+bool MapTest::hasMapLoaded() const
+{
+    return !m_mapData.isEmpty();
+}
+
+// 对外接口：当前地图文件路径。
+QString MapTest::currentMapFilePath() const
+{
+    return filTexyename;
+}
+
+// 对外接口：原始地图列数。
+int MapTest::mapColumnCount() const
+{
+    return map_columns;
+}
+
+// 对外接口：原始地图行数。
+int MapTest::mapRowCount() const
+{
+    return map_rows;
+}
+
+// 对外接口：当前显示方向下的列数。
+int MapTest::displayColumnCount() const
+{
+    return displayColumns();
+}
+
+// 对外接口：当前显示方向下的行数。
+int MapTest::displayRowCount() const
+{
+    return displayRows();
+}
+
+// 对外接口：返回原始地图容器，只读；引用在重新加载/编辑地图后可能变化。
+const QMap<int, QMap<int, string>>& MapTest::sourceMapData() const
+{
+    return m_mapData;
+}
+
+// 对外接口：返回当前显示方向下的地图容器，只读；0度时就是原始地图。
+const QMap<int, QMap<int, string>>& MapTest::displayMapData() const
+{
+    return currentMapData();
+}
+
+// 对外接口：获取原始地图指定坐标内容。
+QString MapTest::sourceCellValue(int column, int row) const
+{
+    if (column < 0 || row < 0 || column >= map_columns || row >= map_rows)
+    {
+        return QString();
+    }
+
+    return QString::fromStdString(m_mapData.value(row).value(column));
+}
+
+// 对外接口：获取当前显示地图指定坐标内容。
+QString MapTest::displayCellValue(int column, int row) const
+{
+    if (column < 0 || row < 0 || column >= displayColumns() || row >= displayRows())
+    {
+        return QString();
+    }
+
+    return QString::fromStdString(currentMapData().value(row).value(column));
+}
+
+// 对外接口：当前行进方向。
+Direction MapTest::mapDirection() const
+{
+    return m_selectedDirection;
+}
+
+// 对外接口：设置行进方向，运行中不允许切换。
+bool MapTest::setMapDirection(Direction direction)
+{
+    const int directionId = static_cast<int>(direction);
+    if (directionId < LeftToRightTopToBottom || directionId > BottomToTopRightToLeft)
+    {
+        return false;
+    }
+    if (m_pTimer->isActive())
+    {
+        return false;
+    }
+
+    m_selectedDirection = direction;
+    MapDirectionVectors vectors = directionVectors(m_selectedDirection);
+    m_currentMinorDx = vectors.minor.dx;
+    m_currentMinorDy = vectors.minor.dy;
+    m_pendingPathDisplayCells.clear();
+    m_assistPathSourceCells.clear();
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
+    invalidateMapColorImage();
+    updateDirectionButton();
+    refreshMapViews();
+    return true;
+}
+
+// 对外接口：获取当前显示坐标。
+QPoint MapTest::currentDisplayCell() const
+{
+    return QPoint(RecordCurrent_x, RecordCurrent_y);
+}
+
+// 对外接口：选中当前显示方向下的指定格。
+bool MapTest::selectDisplayCell(int column, int row, bool centerView, bool refresh)
+{
+    if (m_mapData.isEmpty() ||
+        column < 0 || row < 0 ||
+        column >= displayColumns() || row >= displayRows())
+    {
+        return false;
+    }
+
+    setSelectedCell(column, row, centerView, refresh);
+    return true;
+}
+
+// 对外接口：设置起点。
+bool MapTest::setStartPoint(int column, int row)
+{
+    if (!selectDisplayCell(column, row, true, false))
+    {
+        return false;
+    }
+
+    QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
+    sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
+    sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
+    m_startPointSource = sourceCell;
+    m_hasStartPoint = true;
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
+    refreshMapViews();
+    return true;
+}
+
+// 对外接口：设置唯一参考点。
+bool MapTest::setReferencePoint(int column, int row)
+{
+    if (!selectDisplayCell(column, row, true, false))
+    {
+        return false;
+    }
+
+    QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
+    sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
+    sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
+    m_referencePointSource = sourceCell;
+    m_hasReferencePoint = true;
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
+    refreshMapViews();
+    return true;
+}
+
+// 对外接口：追加验证点。
+bool MapTest::addVerifyPoint(int column, int row)
+{
+    if (!selectDisplayCell(column, row, true, false))
+    {
+        return false;
+    }
+
+    QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
+    sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
+    sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
+    if (!m_verifyPointsSource.contains(sourceCell))
+    {
+        m_verifyPointsSource.append(sourceCell);
+    }
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
+    refreshMapViews();
+    return true;
+}
+
+// 对外接口：清空验证点。
+void MapTest::clearVerifyPointList()
+{
+    m_verifyPointsSource.clear();
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
+    refreshMapViews();
+}
+
+// 对外接口：停止寻起点或路径规划。
+void MapTest::stopFindStartPoint(const QString& reason)
+{
+    m_pTimer->stop();
+    m_isFindingStartPoint = false;
+    m_hasFoundStartPoint = false;
+    clearFindStartRoute();
+    setMapFunctionPanelRunning(false);
+    refreshMapViews();
+
+    if (!reason.isEmpty())
+    {
+        ui->label->setText(reason);
+    }
+}
+
+// 对外接口：停止寻起点或路径规划。
+void MapTest::stopMapPathPlanning()
+{
+    if (m_isFindingStartPoint || !m_pendingFindStartDisplayCells.isEmpty())
+    {
+        stopFindStartPoint();
+        return;
+    }
+
+    m_pTimer->stop();
+    m_pendingPathDisplayCells.clear();
+    setMapFunctionPanelRunning(false);
+    refreshMapViews();
+}
+
+// 对外接口：返回寻起点下一步显示坐标。
+bool MapTest::nextFindStartDisplayCell(QPoint* displayCell)
+{
+    if (displayCell == nullptr || !prepareFindStartRoute() || m_pendingFindStartDisplayCells.isEmpty())
+    {
+        return false;
+    }
+
+    *displayCell = m_pendingFindStartDisplayCells.first();
+    return true;
+}
+
+// 对外接口：返回寻起点下一步原始地图坐标。
+bool MapTest::nextFindStartSourceCell(QPoint* sourceCell)
+{
+    if (sourceCell == nullptr)
+    {
+        return false;
+    }
+
+    QPoint displayCell;
+    if (!nextFindStartDisplayCell(&displayCell))
+    {
+        return false;
+    }
+
+    *sourceCell = displayToSourceCell(displayCell.x(), displayCell.y());
+    return true;
+}
+
+// 对外接口：返回寻起点当前剩余显示坐标路径。
+QVector<QPoint> MapTest::pendingFindStartPathDisplayCells() const
+{
+    return m_pendingFindStartDisplayCells;
+}
+
+// 对外接口：返回寻起点当前剩余原始地图坐标路径。
+QVector<QPoint> MapTest::pendingFindStartPathSourceCells() const
+{
+    QVector<QPoint> sourcePath;
+    sourcePath.reserve(m_pendingFindStartDisplayCells.size());
+    for (const QPoint& displayCell : m_pendingFindStartDisplayCells)
+    {
+        sourcePath.append(displayToSourceCell(displayCell.x(), displayCell.y()));
+    }
+    return sourcePath;
+}
+
+// 对外接口：寻起点前进一步。外部硬件每实际走到一颗后调用一次，界面同步标记一颗。
+bool MapTest::moveToNextFindStartCell(QPoint* movedDisplayCell, bool* reachedStart)
+{
+    if (reachedStart)
+    {
+        *reachedStart = false;
+    }
+    if (m_mapData.isEmpty())
+    {
+        return false;
+    }
+    if (m_pendingFindStartDisplayCells.isEmpty())
+    {
+        if (m_hasFoundStartPoint)
+        {
+            if (reachedStart)
+            {
+                *reachedStart = true;
+            }
+            return false;
+        }
+        if (!prepareFindStartRoute())
+        {
+            return false;
+        }
+    }
+    if (m_pendingFindStartDisplayCells.isEmpty())
+    {
+        if (reachedStart)
+        {
+            *reachedStart = m_hasFoundStartPoint;
+        }
+        return false;
+    }
+
+    QPoint nextDisplayCell = m_pendingFindStartDisplayCells.takeFirst();
+    markFindStartPathCell(nextDisplayCell.x(), nextDisplayCell.y());
+    setSelectedCell(nextDisplayCell.x(), nextDisplayCell.y(), true, false);
+
+    if (movedDisplayCell)
+    {
+        *movedDisplayCell = nextDisplayCell;
+    }
+
+    const bool routeFinished = m_pendingFindStartDisplayCells.isEmpty();
+    if (reachedStart)
+    {
+        *reachedStart = routeFinished;
+    }
+    if (routeFinished)
+    {
+        m_isFindingStartPoint = false;
+        m_hasFoundStartPoint = true;
+        refreshMapViews();
+        ui->label->setText(QStringLiteral("已寻到起点"));
+        setMapFunctionPanelRunning(false);
+        return true;
+    }
+
+    refreshMapViews();
+    return true;
+}
+
+// 对外接口：将当前点标记为已吸取，并同步表格数量和大小图颜色。
+bool MapTest::markCurrentCellPicked()
+{
+    bool picked = processCurrentCellIfChecked();
+    refreshMapViews();
+    return picked;
+}
+
+// 对外接口：选中指定点后标记为已吸取。
+bool MapTest::markDisplayCellPicked(int column, int row)
+{
+    if (!selectDisplayCell(column, row, true, false))
+    {
+        return false;
+    }
+
+    return markCurrentCellPicked();
+}
+
+// 对外接口：计算当前点到下一颗吸取点的路径，路径最后一个点就是下一颗吸取点。
+bool MapTest::prepareNextPickupRoute()
+{
+    if (m_mapData.isEmpty())
+    {
+        return false;
+    }
+    if (!m_hasFoundStartPoint)
+    {
+        return false;
+    }
+    if (!m_pendingPathDisplayCells.isEmpty())
+    {
+        return true;
+    }
+
+    std::unordered_map<std::string, int> checkedRows = checkedTargetRows();
+    if (checkedRows.empty())
+    {
+        return false;
+    }
+
+    std::vector<std::string> targetChars;
+    targetChars.reserve(checkedRows.size());
+    for (const auto& checkedRow : checkedRows)
+    {
+        targetChars.push_back(checkedRow.first);
+    }
+
+    int nextMinorDx = m_currentMinorDx;
+    int nextMinorDy = m_currentMinorDy;
+    QMap<int, QMap<int, string>> searchMapData = currentSearchMapData();
+    std::pair<int, int> nextTarget = traverseSMatrix(searchMapData,
+                                                     targetChars,
+                                                     m_selectedDirection,
+                                                     RecordCurrent_y,
+                                                     RecordCurrent_x,
+                                                     nextMinorDx,
+                                                     nextMinorDy);
+    if (nextTarget.first < 0 || nextTarget.second < 0)
+    {
+        return false;
+    }
+
+    QVector<QPoint> nextPath = buildAssistPathToTarget(searchMapData,
+                                                       targetChars,
+                                                       m_selectedDirection,
+                                                       RecordCurrent_y,
+                                                       RecordCurrent_x,
+                                                       nextTarget.first,
+                                                       nextTarget.second,
+                                                       m_currentMinorDx,
+                                                       m_currentMinorDy);
+    if (nextPath.isEmpty())
+    {
+        return false;
+    }
+
+    m_pendingPathDisplayCells = nextPath;
+    m_currentMinorDx = nextMinorDx;
+    m_currentMinorDy = nextMinorDy;
+    return true;
+}
+
+// 对外接口：返回下一颗吸取点显示坐标。
+bool MapTest::nextPickupDisplayCell(QPoint* displayCell)
+{
+    if (displayCell == nullptr || !prepareNextPickupRoute())
+    {
+        return false;
+    }
+
+    *displayCell = m_pendingPathDisplayCells.last();
+    return true;
+}
+
+// 对外接口：返回下一颗吸取点原始地图坐标。
+bool MapTest::nextPickupSourceCell(QPoint* sourceCell)
+{
+    if (sourceCell == nullptr)
+    {
+        return false;
+    }
+
+    QPoint displayCell;
+    if (!nextPickupDisplayCell(&displayCell))
+    {
+        return false;
+    }
+
+    *sourceCell = displayToSourceCell(displayCell.x(), displayCell.y());
+    return true;
+}
+
+// 对外接口：返回到下一颗吸取点的完整显示坐标路径。
+QVector<QPoint> MapTest::nextMovePathDisplayCells()
+{
+    if (!prepareNextPickupRoute())
+    {
+        return QVector<QPoint>();
+    }
+
+    return m_pendingPathDisplayCells;
+}
+
+// 对外接口：返回到下一颗吸取点的完整原始地图坐标路径。
+QVector<QPoint> MapTest::nextMovePathSourceCells()
+{
+    if (!prepareNextPickupRoute())
+    {
+        return QVector<QPoint>();
+    }
+
+    return pendingMovePathSourceCells();
+}
+
+// 对外接口：返回绕路/经过路径显示坐标，不包含最后吸取点。
+QVector<QPoint> MapTest::nextAssistPathDisplayCells()
+{
+    if (!prepareNextPickupRoute() || m_pendingPathDisplayCells.size() <= 1)
+    {
+        return QVector<QPoint>();
+    }
+
+    QVector<QPoint> assistPath = m_pendingPathDisplayCells;
+    assistPath.removeLast();
+    return assistPath;
+}
+
+// 对外接口：返回绕路/经过路径原始地图坐标，不包含最后吸取点。
+QVector<QPoint> MapTest::nextAssistPathSourceCells()
+{
+    QVector<QPoint> assistDisplayPath = nextAssistPathDisplayCells();
+    QVector<QPoint> assistSourcePath;
+    assistSourcePath.reserve(assistDisplayPath.size());
+    for (const QPoint& displayCell : assistDisplayPath)
+    {
+        assistSourcePath.append(displayToSourceCell(displayCell.x(), displayCell.y()));
+    }
+    return assistSourcePath;
+}
+
+// 对外接口：沿待走路径前进一步。isPickupCell=true表示该步到达下一颗吸取点。
+bool MapTest::moveToNextPlannedCell(QPoint* movedDisplayCell, bool* isPickupCell)
+{
+    if (!prepareNextPickupRoute())
+    {
+        return false;
+    }
+
+    QPoint nextDisplayCell = m_pendingPathDisplayCells.takeFirst();
+    bool finalTargetStep = m_pendingPathDisplayCells.isEmpty();
+    if (!finalTargetStep)
+    {
+        markAssistPathCell(nextDisplayCell.x(), nextDisplayCell.y());
+    }
+
+    if (movedDisplayCell)
+    {
+        *movedDisplayCell = nextDisplayCell;
+    }
+    if (isPickupCell)
+    {
+        *isPickupCell = finalTargetStep;
+    }
+
+    setSelectedCell(nextDisplayCell.x(), nextDisplayCell.y(), true, false);
+    refreshMapViews();
+    return true;
+}
+
+// 对外接口：返回当前尚未行走的显示坐标路径。
+QVector<QPoint> MapTest::pendingMovePathDisplayCells() const
+{
+    return m_pendingPathDisplayCells;
+}
+
+// 对外接口：返回当前尚未行走的原始地图坐标路径。
+QVector<QPoint> MapTest::pendingMovePathSourceCells() const
+{
+    QVector<QPoint> sourcePath;
+    sourcePath.reserve(m_pendingPathDisplayCells.size());
+    for (const QPoint& displayCell : m_pendingPathDisplayCells)
+    {
+        sourcePath.append(displayToSourceCell(displayCell.x(), displayCell.y()));
+    }
+    return sourcePath;
+}
+
+bool MapTest::hasFoundStartPoint() const
+{
+    return m_hasFoundStartPoint;
+}
+
+bool MapTest::isFindingStartPoint() const
+{
+    return m_isFindingStartPoint;
+}
+
+bool MapTest::isPathPlanningRunning() const
+{
+    return m_pTimer->isActive() && !m_isFindingStartPoint;
+}
+
+bool MapTest::hasStartPoint() const
+{
+    return m_hasStartPoint;
+}
+
+bool MapTest::hasReferencePoint() const
+{
+    return m_hasReferencePoint;
+}
+
+QPoint MapTest::startPoint() const
+{
+    return m_startPointSource;
+}
+
+QPoint MapTest::referencePoint() const
+{
+    return m_referencePointSource;
+}
+
+QVector<QPoint> MapTest::verifyPoints() const
+{
+    return m_verifyPointsSource;
 }
 
 //获取CheckBox
@@ -993,7 +1619,7 @@ QCheckBox* getCheckBox(QTableWidget*table,int row ,int column)
         pCheckBox->setFont(table->font());
         pCheckBox->setFocusPolicy(Qt::NoFocus);
         pCheckBox->setStyle(QStyleFactory::create("fusion"));
-        pCheckBox->setStyleSheet(QString(".QCheckBox {margin:3px;border:0px;}QCheckBox::indicator {width: %1px; height: %1px; }").arg(20));
+        pCheckBox->setStyleSheet(QString(".QCheckBox {margin:1px;border:0px;}QCheckBox::indicator {width: %1px; height: %1px; }").arg(16));
         hLayout->addWidget(pCheckBox); //添加
         hLayout->setMargin(0); //设置边缘距离
         hLayout->setAlignment(pCheckBox, Qt::AlignCenter); //居中
@@ -1488,7 +2114,7 @@ void MapTest::on_read_pushButton_clicked()
         return;
     }
 
-    loadMapFileFromPath(selectedFileName, loadMode);
+    loadMapFile(selectedFileName, loadMode);
 }
 
 // 地图加载统一入口：按模式配置参数、清空旧状态并触发读取。
@@ -1546,6 +2172,8 @@ bool MapTest::loadMapFileFromPath(const QString& filePath, int loadMode)
     m_hasEditRectStart = false;
     m_hasEditRectEnd = false;
     m_pendingPathDisplayCells.clear();
+    m_processedSourceCells.clear();
+    m_processedOriginalValues.clear();
     m_assistPathSourceCells.clear();
     clearFindStartRoute();
 
@@ -1894,6 +2522,10 @@ bool MapTest::configureExcelLoadRange(const QString& filePath)
 // 地图读取完成后刷新bin表格、默认起点、刻度尺和大小图。
 void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& stringCounts)
 {
+    m_processedSourceCells.clear();
+    m_processedOriginalValues.clear();
+    m_processedCellText = chooseProcessedCellText(stringCounts);
+
     std::vector<std::string> stringTypes;
     for (const auto& entry : stringCounts)
     {
@@ -1905,7 +2537,7 @@ void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& st
     int defaultTargetCount = -1;
     for (const std::string& type : stringTypes)
     {
-        if (type == "#" || type == " ")
+        if (type == ProcessedCellValue || type == " ")
         {
             continue;
         }
@@ -1921,7 +2553,7 @@ void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& st
     ui->tableWidget->setEditTriggers(QTableWidget::NoEditTriggers);
     for (int j = 0; j < (int)stringTypes.size(); j++)
     {
-        if (stringTypes[j] == "#")
+        if (stringTypes[j] == ProcessedCellValue)
         {
             continue;
         }
@@ -1948,35 +2580,19 @@ void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& st
         }
     }
 
-    int processedCount = 0;
-    auto processed = stringCounts.find("#");
-    if (processed != stringCounts.end())
-    {
-        processedCount = processed->second;
-    }
-    ui->tableWidget->setItem(EffectiveNum, 0, new QTableWidgetItem("已加工"));
-    ui->tableWidget->setItem(EffectiveNum, 1, new QTableWidgetItem(QStringLiteral("#")));
-    ui->tableWidget->setItem(EffectiveNum, 2, new QTableWidgetItem(QString::number(processedCount)));
+    ui->tableWidget->setItem(EffectiveNum, 0, new QTableWidgetItem(ProcessedCellText));
+    ui->tableWidget->setItem(EffectiveNum, 1, new QTableWidgetItem(m_processedCellText));
+    ui->tableWidget->setItem(EffectiveNum, 2, new QTableWidgetItem("0"));
     ui->tableWidget->setItem(EffectiveNum, 3, new QTableWidgetItem("0"));
     ui->tableWidget->setItem(EffectiveNum, 4, new QTableWidgetItem("#ffffff"));
-    ui->tableWidget->item(EffectiveNum, 4)->setBackground(Qt::white);
+    ui->tableWidget->item(EffectiveNum, 4)->setBackground(ProcessedCellColor);
 
     map_columns = m_mapData[0].size();
     map_rows = m_mapData.count();
     rodegrees = 0;
     rebuildRotatedMap();
 
-    BigMapHorizontalslider->setFixedSize(mapwidth, 35);
-    BigMapHorizontalslider->setSingleStep(1);
-    BigMapHorizontalslider->setRulerSliderRange(0, map_columns);
-    BigMapHorizontalslider->setRulerSliderValue(map_columns);
-    BigMapHorizontalslider->move(0, mapheight);
-
-    BigMapVerticalslider->setFixedSize(35, mapheight);
-    BigMapVerticalslider->setSingleStep(1);
-    BigMapVerticalslider->setRulerSliderRange(0, map_rows);
-    BigMapVerticalslider->setRulerSliderValue(map_rows);
-    BigMapVerticalslider->move(mapwidth, 0);
+    syncMapWidgetGeometry();
 
     m_scaleFactor = 1;
     RecordCurrent_x = clampToRange(map_columns / 2, 0, qMax(0, map_columns - 1));
@@ -2486,6 +3102,10 @@ void MapTest::ReadMapTxtFile()
         return;
     }
 
+    m_processedSourceCells.clear();
+    m_processedOriginalValues.clear();
+    m_processedCellText = chooseProcessedCellText(m_stringCount);
+
     // 获取 m_mapData 中所有不同字符串的种类
 
     std::vector<std::string> stringTypes;
@@ -2500,7 +3120,7 @@ void MapTest::ReadMapTxtFile()
     int defaultTargetCount = -1;
     for (const std::string& type : stringTypes)
     {
-        if (type == "#")
+        if (type == ProcessedCellValue)
         {
             continue;
         }
@@ -2516,7 +3136,7 @@ void MapTest::ReadMapTxtFile()
     ui->tableWidget->setEditTriggers(QTableWidget::NoEditTriggers);//不能编辑
     for (int j = 0; j < (int)stringTypes.size(); j++)
     {
-            if (stringTypes[j] == "#")
+            if (stringTypes[j] == ProcessedCellValue)
             {
                 continue;
             }
@@ -2552,16 +3172,16 @@ void MapTest::ReadMapTxtFile()
         }
     }
 
-    ui->tableWidget->setItem(EffectiveNum, 0, new QTableWidgetItem("已加工"));
+    ui->tableWidget->setItem(EffectiveNum, 0, new QTableWidgetItem(ProcessedCellText));
 
-    ui->tableWidget->setItem(EffectiveNum, 1, new QTableWidgetItem(QStringLiteral("#"))); //在新建行插入ascll
+    ui->tableWidget->setItem(EffectiveNum, 1, new QTableWidgetItem(m_processedCellText)); //已加工写入地图的符号
 
-    ui->tableWidget->setItem(EffectiveNum, 2, new QTableWidgetItem(QString::number(m_stringCount["#"]))); //在新建行插入 某个ascll数量
+    ui->tableWidget->setItem(EffectiveNum, 2, new QTableWidgetItem("0")); //已加工数量由坐标集合统计，不占用地图字符
     ui->tableWidget->setItem(EffectiveNum, 3, new QTableWidgetItem("0"));
 
     ui->tableWidget->setItem(EffectiveNum, 4, new QTableWidgetItem("#ffffff")); //设置新建行的背景色
 
-    ui->tableWidget->item(EffectiveNum, 4)->setBackground(Qt::white);
+    ui->tableWidget->item(EffectiveNum, 4)->setBackground(ProcessedCellColor);
 
 
     map_columns = m_mapData[0].size();
@@ -2571,18 +3191,7 @@ void MapTest::ReadMapTxtFile()
     rebuildRotatedMap();
 
 
-    BigMapHorizontalslider->setFixedSize(mapwidth,35);//设置长宽
-    BigMapHorizontalslider->setSingleStep(1);//刻度之间的距离
-    BigMapHorizontalslider->setRulerSliderRange(0,map_columns);//设置刻度范围
-    BigMapHorizontalslider->setRulerSliderValue(map_columns);//设置当前值
-    BigMapHorizontalslider->move(0,mapheight);//移动
-
-
-    BigMapVerticalslider->setFixedSize(35,mapheight);//设置长宽
-    BigMapVerticalslider->setSingleStep(1);//刻度之间的距离
-    BigMapVerticalslider->setRulerSliderRange(0,map_rows);//设置刻度范围
-    BigMapVerticalslider->setRulerSliderValue(map_rows);//设置当前值
-    BigMapVerticalslider->move(mapwidth,0);//移动
+    syncMapWidgetGeometry();
 
     m_scaleFactor=1;
     RecordCurrent_x = clampToRange(map_columns / 2, 0, qMax(0, map_columns - 1));
@@ -2623,6 +3232,20 @@ void MapTest::ReadMapTxtFile()
 //事件过滤器
 bool MapTest::eventFilter(QObject* watched, QEvent* event)
 {
+    if ((watched == ui->main_windows_label ||
+         watched == ui->small_label ||
+         watched == ui->big_map_module ||
+         watched == ui->small_map_module) &&
+        event->type() == QEvent::Resize)
+    {
+        syncMapWidgetGeometry();
+        if (!m_mapData.isEmpty())
+        {
+            refreshMapViews();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     if (watched == ui->main_windows_label)
     {
         if (m_mapData.isEmpty())
@@ -2916,6 +3539,9 @@ void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const 
     const QMap<int, QMap<int, string>>& mapData = currentMapData();
     const int columns = displayColumns();
     const int rows = displayRows();
+    const std::string processedValue = m_processedCellText.toStdString();
+    auto processedColorIter = colorMap.find(processedValue);
+    QColor processedColor = processedColorIter != colorMap.end() ? processedColorIter->second : ProcessedCellColor;
 
     painter.setPen(QPen(QColor(45, 45, 45), 1));
 
@@ -2940,11 +3566,14 @@ void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const 
             auto iter = colorMap.find(ASCII);
             bool isFindStartPath = isFindStartPathDisplayCell(mapX, mapY);
             bool isAssistPath = isAssistPathDisplayCell(mapX, mapY);
+            bool isProcessed = isProcessedDisplayCell(mapX, mapY);
 
             if (isFindStartPath) {
                 painter.fillRect(rect, QColor(255, 178, 70));
             } else if (isAssistPath) {
                 painter.fillRect(rect, QColor(165, 165, 165));
+            } else if (isProcessed) {
+                painter.fillRect(rect, processedColor);
             } else if (iter != colorMap.end()) {
                 painter.fillRect(rect, iter->second);
             } else if (ASCII == " ") {
@@ -3018,6 +3647,24 @@ const QMap<int, QMap<int, string>>& MapTest::currentMapData() const
     return rotate_m_mapData;
 }
 
+// 路径搜索用地图：不修改原始容器，只把已加工坐标临时标记成内部值，避免再次当目标。
+QMap<int, QMap<int, string>> MapTest::currentSearchMapData() const
+{
+    QMap<int, QMap<int, string>> mapData = currentMapData();
+    for (qint64 key : m_processedSourceCells)
+    {
+        int sourceX = int(quint32(key));
+        int sourceY = int(key >> 32);
+        QPoint displayCell = sourceToDisplayCell(sourceX, sourceY);
+        if (displayCell.x() >= 0 && displayCell.y() >= 0 &&
+            displayCell.x() < displayColumns() && displayCell.y() < displayRows())
+        {
+            mapData[displayCell.y()][displayCell.x()] = ProcessedCellValue;
+        }
+    }
+    return mapData;
+}
+
 // 标记缓存图失效，下次刷新大图时再按需重建。
 void MapTest::invalidateMapColorImage()
 {
@@ -3038,6 +3685,9 @@ void MapTest::rebuildMapColorImage(const std::unordered_map<std::string, QColor>
 
     const QMap<int, QMap<int, string>>& mapData = currentMapData();
     const std::string blankCell(" ");
+    const std::string processedValue = m_processedCellText.toStdString();
+    auto processedColorIter = colorMap.find(processedValue);
+    QColor processedColor = processedColorIter != colorMap.end() ? processedColorIter->second : ProcessedCellColor;
     m_mapColorImage = QImage(columns, rows, QImage::Format_RGB32);
     m_mapColorImage.fill(Qt::white);
 
@@ -3060,6 +3710,10 @@ void MapTest::rebuildMapColorImage(const std::unordered_map<std::string, QColor>
             else if (isAssistPathDisplayCell(col, row))
             {
                 color = QColor(165, 165, 165);
+            }
+            else if (isProcessedDisplayCell(col, row))
+            {
+                color = processedColor;
             }
             else
             {
@@ -3143,6 +3797,144 @@ std::unordered_map<std::string, int> MapTest::checkedTargetRows() const
     return checkedRows;
 }
 
+// 选择已加工写入字符：默认#，如果原图已有#，则从常用符号中挑一个未占用字符。
+QString MapTest::chooseProcessedCellText(const std::unordered_map<std::string, int>& stringCounts) const
+{
+    auto containsValue = [&stringCounts](const QString& text) {
+        return stringCounts.find(text.toStdString()) != stringCounts.end();
+    };
+
+    if (!containsValue(QStringLiteral("#")))
+    {
+        return QStringLiteral("#");
+    }
+
+    QStringList candidates;
+    candidates << QStringLiteral("*")
+               << QStringLiteral("@")
+               << QStringLiteral("$")
+               << QStringLiteral("%")
+               << QStringLiteral("&")
+               << QStringLiteral("!")
+               << QStringLiteral("?")
+               << QStringLiteral("+")
+               << QStringLiteral("=")
+               << QStringLiteral("~")
+               << QStringLiteral("^")
+               << QStringLiteral(";")
+               << QStringLiteral(":")
+               << QStringLiteral("/")
+               << QStringLiteral("\\")
+               << QStringLiteral("|");
+
+    int offset = candidates.isEmpty() ? 0 : QRandomGenerator::global()->bounded(candidates.size());
+    for (int i = 0; i < candidates.size(); ++i)
+    {
+        QString candidate = candidates.at((offset + i) % candidates.size());
+        if (!containsValue(candidate))
+        {
+            return candidate;
+        }
+    }
+
+    for (char ch = 33; ch <= 126; ++ch)
+    {
+        QString candidate;
+        candidate.append(QChar(QLatin1Char(ch)));
+        if (!containsValue(candidate))
+        {
+            return candidate;
+        }
+    }
+
+    return QStringLiteral("#");
+}
+
+// 表格第0列写“已加工”的行是状态行，第1列才是真正写入地图的单字符。
+bool MapTest::isProcessedTableRow(int row) const
+{
+    QTableWidgetItem* titleItem = ui->tableWidget->item(row, 0);
+    return titleItem != nullptr && titleItem->text() == ProcessedCellText;
+}
+
+// 修改已加工字符：必须是单个非空可见ASCII字符，且不能和普通bin冲突。
+bool MapTest::updateProcessedCellText(const QString& text, int row)
+{
+    if (m_pTimer->isActive())
+    {
+        return false;
+    }
+
+    QString value = text.trimmed().left(1);
+    if (value.isEmpty() || value == QStringLiteral(" "))
+    {
+        QMessageBox::warning(this, QStringLiteral("已加工字符"), QStringLiteral("已加工字符不能为空或空格。"));
+        return false;
+    }
+
+    for (int tableRow = 0; tableRow < ui->tableWidget->rowCount(); ++tableRow)
+    {
+        if (isProcessedTableRow(tableRow))
+        {
+            continue;
+        }
+
+        QTableWidgetItem* dataItem = ui->tableWidget->item(tableRow, 1);
+        if (dataItem != nullptr && dataItem->text() == value)
+        {
+            QMessageBox::warning(this,
+                                 QStringLiteral("已加工字符"),
+                                 QStringLiteral("字符“%1”已经是地图bin，不能作为已加工字符。").arg(value));
+            return false;
+        }
+    }
+
+    std::string stdValue = value.toStdString();
+    for (int sourceY = 0; sourceY < map_rows; ++sourceY)
+    {
+        for (int sourceX = 0; sourceX < map_columns; ++sourceX)
+        {
+            qint64 key = sourceCellKey(sourceX, sourceY);
+            if (!m_processedSourceCells.contains(key) &&
+                m_mapData.value(sourceY).value(sourceX) == stdValue)
+            {
+                QMessageBox::warning(this,
+                                     QStringLiteral("已加工字符"),
+                                     QStringLiteral("字符“%1”已经存在于地图中，不能作为已加工字符。").arg(value));
+                return false;
+            }
+        }
+    }
+
+    m_processedCellText = value;
+    if (row >= 0 && row < ui->tableWidget->rowCount())
+    {
+        QTableWidgetItem* item = ui->tableWidget->item(row, 1);
+        if (item == nullptr)
+        {
+            item = new QTableWidgetItem();
+            ui->tableWidget->setItem(row, 1, item);
+        }
+        item->setText(m_processedCellText);
+    }
+
+    for (qint64 key : m_processedSourceCells)
+    {
+        int sourceX = int(quint32(key));
+        int sourceY = int(key >> 32);
+        if (sourceX >= 0 && sourceY >= 0 && sourceX < map_columns && sourceY < map_rows)
+        {
+            m_mapData[sourceY][sourceX] = stdValue;
+        }
+    }
+
+    rebuildRotatedMap();
+    updateTableCountsFromMapData();
+    invalidateMapColorImage();
+    refreshMapViews();
+    return true;
+}
+
 // 如果当前格属于勾选目标，则标记为已加工并同步表格计数。
 bool MapTest::processCurrentCellIfChecked()
 {
@@ -3167,64 +3959,75 @@ bool MapTest::processCurrentCellIfChecked()
         return false;
     }
 
-    m_mapData[sourceY][sourceX] = "#";
+    qint64 key = sourceCellKey(sourceX, sourceY);
+    if (m_processedSourceCells.contains(key))
+    {
+        return false;
+    }
+
+    std::string processedValue = m_processedCellText.toStdString();
+    if (processedValue.empty())
+    {
+        return false;
+    }
+
+    m_processedSourceCells.insert(key);
+    m_processedOriginalValues.insert(key, currentValue);
+    m_mapData[sourceY][sourceX] = processedValue;
     if (rodegrees == 90)
     {
-        rotate_m_mapData[sourceX][map_rows - 1 - sourceY] = "#";
+        rotate_m_mapData[sourceX][map_rows - 1 - sourceY] = processedValue;
     }
     else if (rodegrees == 180)
     {
-        rotate_m_mapData[map_rows - 1 - sourceY][map_columns - 1 - sourceX] = "#";
+        rotate_m_mapData[map_rows - 1 - sourceY][map_columns - 1 - sourceX] = processedValue;
     }
     else if (rodegrees == 270)
     {
-        rotate_m_mapData[map_columns - 1 - sourceX][sourceY] = "#";
+        rotate_m_mapData[map_columns - 1 - sourceX][sourceY] = processedValue;
     }
-    m_assistPathSourceCells.remove(sourceCellKey(sourceX, sourceY));
-    if (!updateMapColorImagePixel(RecordCurrent_x, RecordCurrent_y, Qt::white))
+
+    m_assistPathSourceCells.remove(key);
+    std::unordered_map<std::string, QColor> colorMap = buildColorMap();
+    auto processedColor = colorMap.find(processedValue);
+    QColor displayColor = processedColor != colorMap.end() ? processedColor->second : ProcessedCellColor;
+    if (!updateMapColorImagePixel(RecordCurrent_x, RecordCurrent_y, displayColor))
     {
         invalidateMapColorImage();
     }
 
-    QTableWidgetItem* item = ui->tableWidget->item(value->second, 3);
-    if (item != nullptr)
+    QTableWidgetItem* remainingItem = ui->tableWidget->item(value->second, 3);
+    if (remainingItem != nullptr)
     {
-        int numericValue = item->text().toInt();
-        item->setText(QString::number(qMax(0, numericValue - 1)));
-        ui->tableWidget->viewport()->update();
-    }
-    else
-    {
-        std::cout << "Cell is empty." << std::endl;
+        remainingItem->setText(QString::number(qMax(0, remainingItem->text().toInt() - 1)));
     }
 
     for (int row = 0; row < ui->tableWidget->rowCount(); ++row)
     {
-        QTableWidgetItem* dataItem = ui->tableWidget->item(row, 1);
-        if (dataItem != nullptr && dataItem->text() == QStringLiteral("#"))
+        if (!isProcessedTableRow(row))
         {
-            QTableWidgetItem* processedCountItem = ui->tableWidget->item(row, 2);
-            if (processedCountItem == nullptr)
-            {
-                processedCountItem = new QTableWidgetItem("0");
-                ui->tableWidget->setItem(row, 2, processedCountItem);
-            }
-
-            int processedCount = processedCountItem->text().toInt();
-            processedCountItem->setText(QString::number(processedCount + 1));
-
-            QTableWidgetItem* processedRemainingItem = ui->tableWidget->item(row, 3);
-            if (processedRemainingItem == nullptr)
-            {
-                ui->tableWidget->setItem(row, 3, new QTableWidgetItem("0"));
-            }
-            else
-            {
-                processedRemainingItem->setText("0");
-            }
-            break;
+            continue;
         }
+
+        QTableWidgetItem* totalItem = ui->tableWidget->item(row, 2);
+        if (totalItem == nullptr)
+        {
+            totalItem = new QTableWidgetItem();
+            ui->tableWidget->setItem(row, 2, totalItem);
+        }
+        totalItem->setText(QString::number(m_processedSourceCells.size()));
+
+        QTableWidgetItem* processedRemainingItem = ui->tableWidget->item(row, 3);
+        if (processedRemainingItem == nullptr)
+        {
+            processedRemainingItem = new QTableWidgetItem();
+            ui->tableWidget->setItem(row, 3, processedRemainingItem);
+        }
+        processedRemainingItem->setText(QStringLiteral("0"));
+        break;
     }
+
+    ui->tableWidget->viewport()->update();
 
     return true;
 }
@@ -3358,6 +4161,23 @@ bool MapTest::isAssistPathDisplayCell(int displayX, int displayY) const
     return m_assistPathSourceCells.contains(sourceCellKey(sourceCell.x(), sourceCell.y()));
 }
 
+// 判断显示坐标是否已经被标记为已加工。
+bool MapTest::isProcessedDisplayCell(int displayX, int displayY) const
+{
+    if (displayX < 0 || displayY < 0 || displayX >= displayColumns() || displayY >= displayRows())
+    {
+        return false;
+    }
+
+    QPoint sourceCell = displayToSourceCell(displayX, displayY);
+    if (sourceCell.x() < 0 || sourceCell.y() < 0 ||
+        sourceCell.x() >= map_columns || sourceCell.y() >= map_rows)
+    {
+        return false;
+    }
+    return m_processedSourceCells.contains(sourceCellKey(sourceCell.x(), sourceCell.y()));
+}
+
 // 判断显示坐标是否属于寻起点路线。
 bool MapTest::isFindStartPathDisplayCell(int displayX, int displayY) const
 {
@@ -3459,88 +4279,51 @@ void MapTest::setSelectedCell(int x, int y, bool centerView, bool refresh)
 // 将当前选中格保存为起点。
 void MapTest::setStartPointFromSelection()
 {
-    if (m_mapData.isEmpty())
-    {
-        return;
-    }
-
-    QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
-    sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
-    sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
-    m_startPointSource = sourceCell;
-    m_hasStartPoint = true;
-    m_hasFoundStartPoint = false;
-    clearFindStartRoute();
-    refreshMapViews();
+    setStartPoint(RecordCurrent_x, RecordCurrent_y);
 }
 
 // 将当前选中格保存为参考点，参考点只能保留一个。
 void MapTest::setReferencePointFromSelection()
 {
-    if (m_mapData.isEmpty())
-    {
-        return;
-    }
-
-    QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
-    sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
-    sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
-    m_referencePointSource = sourceCell;
-    m_hasReferencePoint = true;
-    m_hasFoundStartPoint = false;
-    clearFindStartRoute();
-    refreshMapViews();
+    setReferencePoint(RecordCurrent_x, RecordCurrent_y);
 }
 
 // 将当前选中格追加为验证点，重复点不再重复添加。
 void MapTest::addVerifyPointFromSelection()
 {
-    if (m_mapData.isEmpty())
-    {
-        return;
-    }
-
-    QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
-    sourceCell.setX(clampToRange(sourceCell.x(), 0, map_columns - 1));
-    sourceCell.setY(clampToRange(sourceCell.y(), 0, map_rows - 1));
-    if (!m_verifyPointsSource.contains(sourceCell))
-    {
-        m_verifyPointsSource.append(sourceCell);
-    }
-    m_hasFoundStartPoint = false;
-    clearFindStartRoute();
-    refreshMapViews();
+    addVerifyPoint(RecordCurrent_x, RecordCurrent_y);
 }
 
 // 清空所有验证点并刷新地图标记。
 void MapTest::clearVerifyPoints()
 {
-    m_verifyPointsSource.clear();
-    m_hasFoundStartPoint = false;
-    clearFindStartRoute();
-    refreshMapViews();
+    clearVerifyPointList();
 }
 
-// 按参考点、验证点和起点生成寻起点路径，并按定时器逐格执行。
-void MapTest::findStartPointRoute()
+// 对外接口：按参考点、验证点和起点生成寻起点路径，不自动定时运行。
+bool MapTest::prepareFindStartRoute()
 {
     if (m_mapData.isEmpty())
     {
-        return;
+        return false;
     }
-    if (m_pTimer->isActive())
+    if (m_pTimer->isActive() && !m_isFindingStartPoint)
     {
-        return;
+        return false;
+    }
+    if (m_isFindingStartPoint && !m_pendingFindStartDisplayCells.isEmpty())
+    {
+        return true;
     }
     if (!m_hasReferencePoint)
     {
         QMessageBox::warning(this, QStringLiteral("寻起点"), QStringLiteral("请先设置参考点。"));
-        return;
+        return false;
     }
     if (!m_hasStartPoint)
     {
         QMessageBox::warning(this, QStringLiteral("寻起点"), QStringLiteral("请先设置起点。"));
-        return;
+        return false;
     }
 
     QVector<QPoint> routePoints;
@@ -3560,7 +4343,7 @@ void MapTest::findStartPointRoute()
 
     auto buildSmartSegment = [this, &targetSet](const QPoint& from, const QPoint& to) {
         QVector<QPoint> path;
-        const QMap<int, QMap<int, string>>& mapData = currentMapData();
+        QMap<int, QMap<int, string>> mapData = currentSearchMapData();
         const int rows = displayRows();
         const int columns = displayColumns();
         if (rows <= 0 || columns <= 0)
@@ -3585,7 +4368,7 @@ void MapTest::findStartPointRoute()
             }
 
             std::string value = mapData.value(row).value(col, std::string(" "));
-            if (value == "#" || targetSet.find(value) != targetSet.end())
+            if (value == ProcessedCellValue || targetSet.find(value) != targetSet.end())
             {
                 return 1;
             }
@@ -3713,7 +4496,7 @@ void MapTest::findStartPointRoute()
         if (segment.isEmpty() && from != to)
         {
             QMessageBox::warning(this, QStringLiteral("寻起点"), QStringLiteral("无法生成从第%1个点到第%2个点的路线。").arg(i).arg(i + 1));
-            return;
+            return false;
         }
         pendingPath += segment;
     }
@@ -3734,11 +4517,37 @@ void MapTest::findStartPointRoute()
         m_isFindingStartPoint = false;
         m_hasFoundStartPoint = true;
         ui->label->setText(QStringLiteral("已寻到起点"));
-        return;
+        return true;
     }
 
     setMapFunctionPanelRunning(true);
-    m_pTimer->start(100);
+    return true;
+}
+
+// 对外接口：开始自动寻起点，内部仍然按单步接口逐格推进。
+bool MapTest::startFindStartPoint()
+{
+    if (m_pTimer->isActive())
+    {
+        return false;
+    }
+
+    if (!prepareFindStartRoute())
+    {
+        return false;
+    }
+
+    if (!m_hasFoundStartPoint)
+    {
+        m_pTimer->start(100);
+    }
+    return true;
+}
+
+// UI包装：按钮和右键菜单调用统一公开接口。
+void MapTest::findStartPointRoute()
+{
+    startFindStartPoint();
 }
 
 // 在大图可见区域内绘制起点、参考点和验证点标记。
@@ -3973,7 +4782,10 @@ QVector<QPoint> MapTest::editSelectionSourceCells() const
 // 确保新bin值在表格中有一行颜色和计数配置。
 void MapTest::ensureMapTypeRow(const QString& value)
 {
-    if (value.isEmpty() || value == QStringLiteral(" ") || value == QStringLiteral("#"))
+    if (value.isEmpty() ||
+        value == QStringLiteral(" ") ||
+        value == ProcessedCellText ||
+        value == m_processedCellText)
     {
         return;
     }
@@ -4010,6 +4822,12 @@ void MapTest::updateTableCountsFromMapData()
         }
     }
 
+    std::unordered_map<std::string, int> processedByValue;
+    for (auto it = m_processedOriginalValues.constBegin(); it != m_processedOriginalValues.constEnd(); ++it)
+    {
+        processedByValue[it.value()]++;
+    }
+
     for (int row = 0; row < ui->tableWidget->rowCount(); ++row)
     {
         QTableWidgetItem* dataItem = ui->tableWidget->item(row, 1);
@@ -4019,7 +4837,11 @@ void MapTest::updateTableCountsFromMapData()
         }
 
         QString value = dataItem->text();
-        int count = counts[value.toStdString()];
+        const bool processedRow = isProcessedTableRow(row);
+        std::string stdValue = value.toStdString();
+        int remaining = processedRow ? 0 : counts[stdValue];
+        int count = processedRow ? m_processedSourceCells.size() : remaining + processedByValue[stdValue];
+
         QTableWidgetItem* totalItem = ui->tableWidget->item(row, 2);
         if (totalItem == nullptr)
         {
@@ -4034,7 +4856,7 @@ void MapTest::updateTableCountsFromMapData()
             remainingItem = new QTableWidgetItem();
             ui->tableWidget->setItem(row, 3, remainingItem);
         }
-        remainingItem->setText(value == QStringLiteral("#") ? QStringLiteral("0") : QString::number(count));
+        remainingItem->setText(QString::number(remaining));
     }
 }
 
@@ -4047,6 +4869,14 @@ void MapTest::applyEditToSelection(const QString& newValue)
     }
 
     QString value = newValue.isEmpty() ? QStringLiteral(" ") : newValue.left(1);
+    if (value == m_processedCellText)
+    {
+        QMessageBox::warning(this,
+                             QStringLiteral("Map编辑"),
+                             QStringLiteral("新bin不能和已加工字符“%1”相同。").arg(m_processedCellText));
+        return;
+    }
+
     QVector<QPoint> cells = editSelectionSourceCells();
     if (cells.isEmpty())
     {
@@ -4057,6 +4887,9 @@ void MapTest::applyEditToSelection(const QString& newValue)
     std::string stdValue = value.toStdString();
     for (const QPoint& sourceCell : cells)
     {
+        qint64 key = sourceCellKey(sourceCell.x(), sourceCell.y());
+        m_processedSourceCells.remove(key);
+        m_processedOriginalValues.remove(key);
         m_mapData[sourceCell.y()][sourceCell.x()] = stdValue;
     }
 
@@ -4242,8 +5075,11 @@ void MapTest::renderMainMap()
     const int pixelHeight = ui->main_windows_label->height();
     const bool drawCellText = cellWidth >= 10 && cellHeight >= 10;
     const std::string blankCell(" ");
+    const std::string processedValue = m_processedCellText.toStdString();
+    auto processedColorIter = colorMap.find(processedValue);
+    QColor processedColor = processedColorIter != colorMap.end() ? processedColorIter->second : ProcessedCellColor;
 
-    auto cellColor = [this, &colorMap](const std::string& value, int col, int row) {
+    auto cellColor = [this, &colorMap, processedColor](const std::string& value, int col, int row) {
         if (isFindStartPathDisplayCell(col, row))
         {
             return QColor(255, 178, 70);
@@ -4251,6 +5087,10 @@ void MapTest::renderMainMap()
         if (isAssistPathDisplayCell(col, row))
         {
             return QColor(165, 165, 165);
+        }
+        if (isProcessedDisplayCell(col, row))
+        {
+            return processedColor;
         }
 
         auto iter = colorMap.find(value);
@@ -4555,7 +5395,7 @@ void MapTest::setupMapFunctionPanel()
         }
 
         QApplication::setOverrideCursor(Qt::WaitCursor);
-        QString filePath = findMapFileByScanText(scanText, searchRoots);
+        QString filePath = searchMapFileByScanText(scanText, searchRoots);
         QApplication::restoreOverrideCursor();
         if (filePath.isEmpty())
         {
@@ -4566,7 +5406,7 @@ void MapTest::setupMapFunctionPanel()
         }
 
         int selectedLoadMode = ui->map_load_mode_comboBox->currentIndex();
-        loadMapFileFromPath(filePath, selectedLoadMode);
+        loadMapFile(filePath, selectedLoadMode);
     });
 
     connect(ui->reset_view_pushButton, &QPushButton::clicked, this, [this]() {
@@ -4580,7 +5420,7 @@ void MapTest::setupMapFunctionPanel()
         {
             targetChars.push_back(checkedRow.first);
         }
-        std::pair<int, int> firstTarget = findFirstTargetPosition(currentMapData(), targetChars, m_selectedDirection);
+        std::pair<int, int> firstTarget = findFirstTargetPosition(currentSearchMapData(), targetChars, m_selectedDirection);
         if (firstTarget.first >= 0 && firstTarget.second >= 0)
         {
             setSelectedCell(firstTarget.second, firstTarget.first, true, false);
@@ -4592,7 +5432,14 @@ void MapTest::setupMapFunctionPanel()
     connect(ui->set_reference_point_pushButton, &QPushButton::clicked, this, &MapTest::setReferencePointFromSelection);
     connect(ui->ref_point_pushButton, &QPushButton::clicked, this, &MapTest::addVerifyPointFromSelection);
     connect(ui->clear_reference_points_pushButton, &QPushButton::clicked, this, &MapTest::clearVerifyPoints);
-    connect(ui->find_start_pushButton, &QPushButton::clicked, this, &MapTest::findStartPointRoute);
+    connect(ui->find_start_pushButton, &QPushButton::clicked, this, [this]() {
+        if (m_isFindingStartPoint)
+        {
+            stopFindStartPoint(QStringLiteral("寻起点已停止"));
+            return;
+        }
+        findStartPointRoute();
+    });
 
     connect(ui->edit_point_radioButton, &QRadioButton::toggled, this, [this](bool checked) {
         if (checked)
@@ -4645,13 +5492,18 @@ void MapTest::setMapFunctionPanelRunning(bool running)
     ui->reset_view_pushButton->setEnabled(!running);
     ui->rotate->setEnabled(!running);
     ui->direction_pushButton->setEnabled(!running);
-    ui->start_pushButton->setEnabled(!running);
+    const bool pathPlanningRunning = running && !m_isFindingStartPoint;
+    ui->start_pushButton->setEnabled(!running || pathPlanningRunning);
+    ui->start_pushButton->setText(pathPlanningRunning
+                                  ? QStringLiteral("停止")
+                                  : QStringLiteral("开始规划"));
     ui->first_target_pushButton->setEnabled(!running);
     ui->set_start_point_pushButton->setEnabled(!running);
     ui->set_reference_point_pushButton->setEnabled(!running);
     ui->ref_point_pushButton->setEnabled(!running);
     ui->clear_reference_points_pushButton->setEnabled(!running);
-    ui->find_start_pushButton->setEnabled(!running);
+    ui->find_start_pushButton->setEnabled(!running || m_isFindingStartPoint);
+    ui->find_start_pushButton->setText(m_isFindingStartPoint ? QStringLiteral("停止") : QStringLiteral("寻起点"));
     ui->edit_point_radioButton->setEnabled(!running);
     ui->edit_rect_radioButton->setEnabled(!running);
     ui->edit_circle_radioButton->setEnabled(!running);
@@ -4662,7 +5514,21 @@ void MapTest::setMapFunctionPanelRunning(bool running)
     ui->crop_select_pushButton->setEnabled(!running);
     ui->new_bin_lineEdit->setEnabled(!running);
     ui->ring_count_spinBox->setEnabled(!running);
-    ui->stop_pushButton->setEnabled(true);
+
+    for (int row = 0; row < ui->tableWidget->rowCount(); ++row)
+    {
+        QWidget* widget = ui->tableWidget->cellWidget(row, 0);
+        if (widget == nullptr)
+        {
+            continue;
+        }
+
+        const QList<QCheckBox*> boxes = widget->findChildren<QCheckBox*>();
+        for (QCheckBox* box : boxes)
+        {
+            box->setEnabled(!running);
+        }
+    }
 }
 
 // 弹出方向选择窗口，用户确认后更新蛇形行进方向。
@@ -4746,37 +5612,185 @@ void MapTest::on_direction_pushButton_clicked()
         int id = buttonGroup.checkedId();
         if (id >= 0)
         {
-            m_selectedDirection = static_cast<Direction>(id);
-            MapDirectionVectors vectors = directionVectors(m_selectedDirection);
-            m_currentMinorDx = vectors.minor.dx;
-            m_currentMinorDy = vectors.minor.dy;
-            m_pendingPathDisplayCells.clear();
-            m_assistPathSourceCells.clear();
-            clearFindStartRoute();
-            invalidateMapColorImage();
-            updateDirectionButton();
+            setMapDirection(static_cast<Direction>(id));
         }
     }
 }
 
-// 根据大图可见范围和小图中心刷新四个刻度尺。
+// 刷新四个刻度尺：大图显示全地图坐标位置，小图显示当前15x15局部范围。
 void MapTest::updateRulers()
 {
-    QRectF view = currentViewRect();
-    int startX = clampToRange((int)floor(view.left()), 0, qMax(0, displayColumns() - 1));
-    int endX = clampToRange((int)ceil(view.right()), startX + 1, qMax(1, displayColumns()));
-    int startY = clampToRange((int)floor(view.top()), 0, qMax(0, displayRows() - 1));
-    int endY = clampToRange((int)ceil(view.bottom()), startY + 1, qMax(1, displayRows()));
+    const int columns = displayColumns();
+    const int rows = displayRows();
+    if (columns <= 0 || rows <= 0)
+    {
+        BigMapHorizontalslider->setRulerSliderRange(0, 1);
+        BigMapHorizontalslider->setRulerSliderValue(0);
+        BigMapVerticalslider->setRulerSliderRange(0, 1);
+        BigMapVerticalslider->setRulerSliderValue(0);
+        SmallMapHorizontalslider->setRulerSliderRange(0, 1);
+        SmallMapHorizontalslider->setRulerSliderValue(0);
+        SmallMapVerticalslider->setRulerSliderRange(0, 1);
+        SmallMapVerticalslider->setRulerSliderValue(0);
+        return;
+    }
 
-    BigMapHorizontalslider->setRulerSliderRange(startX, endX);
-    BigMapHorizontalslider->setRulerSliderValue(clampToRange(RecordCurrent_x, startX, endX));
-    BigMapVerticalslider->setRulerSliderRange(startY, endY);
-    BigMapVerticalslider->setRulerSliderValue(clampToRange(RecordCurrent_y, startY, endY));
+    BigMapHorizontalslider->setRulerSliderRange(1, columns);
+    BigMapHorizontalslider->setRulerSliderValue(RecordCurrent_x + 1);
+    BigMapVerticalslider->setRulerSliderRange(1, rows);
+    BigMapVerticalslider->setRulerSliderValue(RecordCurrent_y + 1);
 
-    SmallMapHorizontalslider->setRulerSliderRange(RecordCurrent_x - 7, RecordCurrent_x + 8);
-    SmallMapHorizontalslider->setRulerSliderValue(RecordCurrent_x);
-    SmallMapVerticalslider->setRulerSliderRange(RecordCurrent_y - 7, RecordCurrent_y + 8);
-    SmallMapVerticalslider->setRulerSliderValue(RecordCurrent_y);
+    int smallStartX = qMax(1, RecordCurrent_x - 7 + 1);
+    int smallEndX = qMin(columns, RecordCurrent_x + 8 + 1);
+    int smallStartY = qMax(1, RecordCurrent_y - 7 + 1);
+    int smallEndY = qMin(rows, RecordCurrent_y + 8 + 1);
+    SmallMapHorizontalslider->setRulerSliderRange(smallStartX, smallEndX);
+    SmallMapHorizontalslider->setRulerSliderValue(RecordCurrent_x + 1);
+    SmallMapVerticalslider->setRulerSliderRange(smallStartY, smallEndY);
+    SmallMapVerticalslider->setRulerSliderValue(RecordCurrent_y + 1);
+}
+
+// 初始化表格的紧凑显示，避免颜色列被挤出后出现横向滚动条。
+void MapTest::setupMapTableView()
+{
+    ui->tableWidget->setEditTriggers(QTableWidget::NoEditTriggers);
+    ui->tableWidget->setSelectionMode(QAbstractItemView::NoSelection);
+    ui->tableWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->tableWidget->setWordWrap(false);
+    ui->tableWidget->setAlternatingRowColors(false);
+
+    QFont tableFont = ui->tableWidget->font();
+    tableFont.setPointSize(10);
+    ui->tableWidget->setFont(tableFont);
+    ui->tableWidget->horizontalHeader()->setFont(tableFont);
+    ui->tableWidget->verticalHeader()->setFont(tableFont);
+    ui->tableWidget->horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
+    ui->tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    ui->tableWidget->horizontalHeader()->setStretchLastSection(false);
+    ui->tableWidget->verticalHeader()->setDefaultSectionSize(24);
+    ui->tableWidget->verticalHeader()->setMinimumSectionSize(20);
+    ui->tableWidget->verticalHeader()->setFixedWidth(28);
+    ui->tableWidget->setShowGrid(true);
+    updateTableColumnWidths();
+}
+
+// 从UI动态属性columnWidths读取初始列宽；之后允许用户拖动表头分隔线调整。
+void MapTest::updateTableColumnWidths()
+{
+    if (ui->tableWidget->columnCount() < 5)
+    {
+        return;
+    }
+
+    QVector<int> widths = {76, 54, 86, 86, 74};
+    QString widthConfig = ui->tableWidget->property("columnWidths").toString();
+    widthConfig.replace(QStringLiteral("，"), QStringLiteral(","));
+    const QStringList parts = widthConfig.split(QStringLiteral(","), Qt::SkipEmptyParts);
+    for (int i = 0; i < parts.size() && i < widths.size(); ++i)
+    {
+        bool ok = false;
+        const int width = parts.at(i).trimmed().toInt(&ok);
+        if (ok && width > 0)
+        {
+            widths[i] = width;
+        }
+    }
+
+    for (int i = 0; i < widths.size(); ++i)
+    {
+        ui->tableWidget->setColumnWidth(i, widths.at(i));
+    }
+}
+
+// 表格和小图区域允许在UI里直接拖动位置和尺寸，运行时只做边界保护。
+void MapTest::captureSmallMapChildLayoutBase()
+{
+    m_baseTableWidgetRect = ui->tableWidget->geometry();
+    m_baseSmallLabelRect = ui->small_label->geometry();
+    m_hasSmallMapChildLayoutBase = true;
+}
+
+// 根据三个UI模块的几何信息同步内部控件，避免控件改尺寸后还要改代码。
+void MapTest::syncMapWidgetGeometry()
+{
+    if (m_isSyncingMapWidgetGeometry)
+    {
+        return;
+    }
+    if (!BigMapHorizontalslider || !BigMapVerticalslider ||
+        !SmallMapHorizontalslider || !SmallMapVerticalslider)
+    {
+        return;
+    }
+
+    m_isSyncingMapWidgetGeometry = true;
+
+    const QRect bigModuleRect = ui->big_map_module->geometry();
+    const QRect smallModuleRect = ui->small_map_module->geometry();
+
+    const int mapInfoHeight = qMax(1, ui->map_info_label->height());
+    const int mainWidth = qMax(1, bigModuleRect.width() - RulerThickness);
+    const int mainHeight = qMax(1, bigModuleRect.height() - RulerThickness - mapInfoHeight);
+    QRect mainRect(0, 0, mainWidth, mainHeight);
+    ui->main_windows_label->setGeometry(mainRect);
+    ui->map_info_label->setGeometry(0,
+                                    mainHeight + RulerThickness,
+                                    mainWidth,
+                                    mapInfoHeight);
+
+    BigMapHorizontalslider->setFixedSize(mainWidth, RulerThickness);
+    BigMapHorizontalslider->move(bigModuleRect.left(), bigModuleRect.top() + mainHeight);
+    BigMapVerticalslider->setFixedSize(RulerThickness, mainHeight);
+    BigMapVerticalslider->move(bigModuleRect.left() + mainWidth, bigModuleRect.top());
+
+    const int statusHeight = qMax(1, ui->label->height());
+    const int smallContentWidth = qMax(1, smallModuleRect.width() - RulerThickness);
+    if (!m_hasSmallMapChildLayoutBase)
+    {
+        captureSmallMapChildLayoutBase();
+    }
+    const int availableSmallHeight = qMax(1, smallModuleRect.height()
+                                             - RulerThickness
+                                             - statusHeight
+                                             - ModuleVerticalGap
+                                             - StatusVerticalGap);
+    auto boundedChildRect = [availableSmallHeight](const QRect& baseRect, int availableWidth) {
+        availableWidth = qMax(1, availableWidth);
+        const int left = qBound(0, baseRect.left(), qMax(0, availableWidth - 1));
+        const int top = qBound(0, baseRect.top(), qMax(0, availableSmallHeight - 1));
+        const int width = qMin(qMax(1, baseRect.width()), qMax(1, availableWidth - left));
+        const int height = qMin(qMax(1, baseRect.height()), qMax(1, availableSmallHeight - top));
+        return QRect(left, top, width, height);
+    };
+
+    QRect tableRect = boundedChildRect(m_baseTableWidgetRect, smallContentWidth);
+    QRect smallRect = boundedChildRect(m_baseSmallLabelRect, smallContentWidth);
+    ui->tableWidget->setGeometry(tableRect);
+    ui->small_label->setGeometry(smallRect);
+    ui->label->setGeometry(smallRect.left(),
+                           smallRect.top() + smallRect.height() + RulerThickness + StatusVerticalGap,
+                           smallRect.width(),
+                           statusHeight);
+
+    SmallMapHorizontalslider->setFixedSize(smallRect.width(), RulerThickness);
+    SmallMapHorizontalslider->move(smallModuleRect.left() + smallRect.left(), smallModuleRect.top() + smallRect.top() + smallRect.height());
+    SmallMapVerticalslider->setFixedSize(RulerThickness, smallRect.height());
+    SmallMapVerticalslider->move(smallModuleRect.left() + smallRect.left() + smallRect.width(), smallModuleRect.top() + smallRect.top());
+
+    ui->big_map_module->raise();
+    ui->small_map_module->raise();
+    ui->main_windows_label->raise();
+    ui->map_info_label->raise();
+    ui->tableWidget->raise();
+    ui->small_label->raise();
+    ui->label->raise();
+    ui->map_function_panel->raise();
+    BigMapHorizontalslider->raise();
+    BigMapVerticalslider->raise();
+    SmallMapHorizontalslider->raise();
+    SmallMapVerticalslider->raise();
+    updateRulers();
+    m_isSyncingMapWidgetGeometry = false;
 }
 
 // 按当前旋转角度重建绘图用的旋转地图数据。
@@ -4818,6 +5832,8 @@ void MapTest::resetMapScale()
         m_mapData.clear();
         rotate_m_mapData.clear();
         m_pendingPathDisplayCells.clear();
+        m_processedSourceCells.clear();
+        m_processedOriginalValues.clear();
         m_assistPathSourceCells.clear();
         clearFindStartRoute();
         invalidateMapColorImage();
@@ -4864,6 +5880,18 @@ void MapTest::mouseMoveEvent(QMouseEvent *e)
 {
     QMainWindow::mouseMoveEvent(e);
 }
+
+// 窗口或布局尺寸变化后，同步刻度尺和地图绘制尺寸。
+void MapTest::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    syncMapWidgetGeometry();
+    if (!m_mapData.isEmpty())
+    {
+        refreshMapViews();
+    }
+}
+
 //鼠标按下
 void MapTest::mousePressEvent(QMouseEvent* e)
 {
@@ -4929,46 +5957,50 @@ void MapTest::on_rotate_clicked()
 // 表格点击处理：已加工字符可编辑，颜色列可弹出颜色选择器。
 void MapTest::on_tableWidget_cellClicked(int row, int column)
 {
-    if(row==ui->tableWidget->rowCount()-1 && column==1)
+    if (m_pTimer->isActive())
     {
-        // 设置点击的单元格为可编辑状态
-       ui->tableWidget->editItem(ui->tableWidget->item(row, column));
+        return;
+    }
 
-       QTableWidgetItem* item = ui->tableWidget->item(row, column);
-          if (item)
-          {
-              QLineEdit* editor = new QLineEdit(item->text(), ui->tableWidget);
+    if (isProcessedTableRow(row) && column == 1)
+    {
+        QTableWidgetItem* item = ui->tableWidget->item(row, column);
+        if (item == nullptr)
+        {
+            item = new QTableWidgetItem(m_processedCellText);
+            ui->tableWidget->setItem(row, column, item);
+        }
 
-              // 创建一个正则表达式验证器，限制输入为单个非空的ASCII字符
-              QRegularExpressionValidator* validator = new QRegularExpressionValidator(QRegularExpression("[ -~]"), editor);
-              editor->setValidator(validator);
+        QWidget* oldWidget = ui->tableWidget->cellWidget(row, column);
+        if (oldWidget != nullptr)
+        {
+            ui->tableWidget->removeCellWidget(row, column);
+            delete oldWidget;
+        }
 
-              editor->setMaxLength(1);  // 设置最大输入长度为 1
-              ui->tableWidget->setCellWidget(row, column, editor);
-              editor->setFocus();
+        QLineEdit* editor = new QLineEdit(item->text(), ui->tableWidget);
+        QRegularExpressionValidator* validator = new QRegularExpressionValidator(QRegularExpression("[!-~]"), editor);
+        editor->setValidator(validator);
+        editor->setMaxLength(1);
+        ui->tableWidget->setCellWidget(row, column, editor);
+        editor->selectAll();
+        editor->setFocus();
 
-              /// 重写 focusOutEvent 事件处理函数
-              editor->installEventFilter(this);
+        connect(editor, &QLineEdit::editingFinished, this, [this, editor, row, column]() {
+            QString text = editor->text();
+            ui->tableWidget->removeCellWidget(row, column);
+            editor->deleteLater();
 
-              // 在编辑器失去焦点时检查输入的有效性
-              connect(editor, &QLineEdit::textChanged, [this, editor]() {
-                  QString text = editor->text();
-                  if (text.isEmpty())
-                  {
-                      // 输入为空，发出警告或禁止用户离开单元格
-                      editor->setFocus();
-                      // 例如，您可以显示一个警告对话框，或者强制重新编辑该单元格
-                  }
-                  else if (text.length() > 1)
-                  {
-                      // 输入超过一个字符，发出警告或截取第一个字符
-                      qDebug() << "Input should be a single character!";
-                      // 例如，您可以显示一个警告对话框，并截取第一个字符
-                      editor->setText(text.left(1));
-                  }
-              });
-          }
-
+            if (!updateProcessedCellText(text, row))
+            {
+                QTableWidgetItem* item = ui->tableWidget->item(row, column);
+                if (item != nullptr)
+                {
+                    item->setText(m_processedCellText);
+                }
+            }
+        });
+        return;
     }
 
     if(column==4)
@@ -5064,7 +6096,7 @@ QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_ma
         }
 
         std::string value = m_mapDat.value(row).value(col);
-        if (value == "#" || targetSet.find(value) != targetSet.end())
+        if (value == ProcessedCellValue || targetSet.find(value) != targetSet.end())
         {
             return normalCost;
         }
@@ -5258,22 +6290,22 @@ std::pair<int, int> traverseSMatrix(const QMap<int, QMap<int, string>>& m_mapDat
     return {-1, -1};
 }
 
-// 从设置的起点或当前点启动加工步进，并先计算第一段路径。
-void MapTest::on_start_pushButton_clicked()
+// 对外接口：从设置的起点启动加工步进，并先计算第一段路径。
+bool MapTest::startMapPathPlanning()
 {
     if (m_mapData.isEmpty())
     {
-        return;
+        return false;
     }
     if (m_isFindingStartPoint)
     {
         QMessageBox::warning(this, QStringLiteral("路径规划"), QStringLiteral("正在寻起点，请等待完成后再开始路径规划。"));
-        return;
+        return false;
     }
     if (!m_hasFoundStartPoint)
     {
         QMessageBox::warning(this, QStringLiteral("路径规划"), QStringLiteral("请先点击“寻起点”，走到起点后再开始路径规划。"));
-        return;
+        return false;
     }
 
     MapDirectionVectors vectors = directionVectors(m_selectedDirection);
@@ -5293,7 +6325,7 @@ void MapTest::on_start_pushButton_clicked()
     if (checkedRows.empty())
     {
         refreshMapViews();
-        return;
+        return false;
     }
 
     std::vector<std::string> targetChars;
@@ -5303,13 +6335,14 @@ void MapTest::on_start_pushButton_clicked()
         targetChars.push_back(checkedRow.first);
     }
 
-    if (!m_hasStartPoint && !containsTarget(currentMapData(), targetChars, RecordCurrent_y, RecordCurrent_x))
+    QMap<int, QMap<int, string>> searchMapData = currentSearchMapData();
+    if (!m_hasStartPoint && !containsTarget(searchMapData, targetChars, RecordCurrent_y, RecordCurrent_x))
     {
-        std::pair<int, int> firstTarget = findFirstTargetPosition(currentMapData(), targetChars, m_selectedDirection);
+        std::pair<int, int> firstTarget = findFirstTargetPosition(searchMapData, targetChars, m_selectedDirection);
         if (firstTarget.first < 0 || firstTarget.second < 0)
         {
             refreshMapViews();
-            return;
+            return false;
         }
         setSelectedCell(firstTarget.second, firstTarget.first, true, false);
         setStartPointFromSelection();
@@ -5320,7 +6353,7 @@ void MapTest::on_start_pushButton_clicked()
     if (!advanceSearchStep())
     {
         qDebug() << "没有找到目标字符的路径。";
-        return;
+        return false;
     }
 
     if (!m_pTimer->isActive())
@@ -5328,21 +6361,19 @@ void MapTest::on_start_pushButton_clicked()
         setMapFunctionPanelRunning(true);
         m_pTimer->start(100);
     }
+    return true;
 }
 
-// 停止自动步进并恢复运行时锁定的控件。
-void MapTest::on_stop_pushButton_clicked()
+// UI包装：开始按钮调用统一公开接口。
+void MapTest::on_start_pushButton_clicked()
 {
-
-    m_pTimer->stop();
-    if (m_isFindingStartPoint)
+    if (m_pTimer->isActive() && !m_isFindingStartPoint)
     {
-        m_isFindingStartPoint = false;
-        m_hasFoundStartPoint = false;
-        clearFindStartRoute();
+        stopMapPathPlanning();
+        return;
     }
-    setMapFunctionPanelRunning(false);
-    refreshMapViews();
+
+    startMapPathPlanning();
 }
 
 // 定时器回调：每次推进一步，找不到目标时自动停止。
@@ -5370,27 +6401,13 @@ void MapTest::handleTimeout()
 // 寻起点时每次走一格，走到起点后才允许开始路径规划。
 bool MapTest::advanceFindStartStep()
 {
-    if (m_mapData.isEmpty() || m_pendingFindStartDisplayCells.isEmpty())
+    bool reachedStart = false;
+    if (!moveToNextFindStartCell(nullptr, &reachedStart))
     {
-        m_isFindingStartPoint = false;
         return false;
     }
 
-    QPoint nextDisplayCell = m_pendingFindStartDisplayCells.takeFirst();
-    markFindStartPathCell(nextDisplayCell.x(), nextDisplayCell.y());
-    setSelectedCell(nextDisplayCell.x(), nextDisplayCell.y(), true, false);
-
-    if (m_pendingFindStartDisplayCells.isEmpty())
-    {
-        m_isFindingStartPoint = false;
-        m_hasFoundStartPoint = true;
-        refreshMapViews();
-        ui->label->setText(QStringLiteral("已寻到起点"));
-        return false;
-    }
-
-    refreshMapViews();
-    return true;
+    return !reachedStart;
 }
 
 // 处理当前点并推进到下一步；需要借助路径时先走灰色借助格。
@@ -5406,64 +6423,15 @@ bool MapTest::advanceSearchStep()
         processCurrentCellIfChecked();
     }
 
-    std::unordered_map<std::string, int> checkedRows = checkedTargetRows();
-    if (checkedRows.empty())
+    QPoint nextDisplayCell;
+    bool isPickupCell = false;
+    if (!moveToNextPlannedCell(&nextDisplayCell, &isPickupCell))
     {
         refreshMapViews();
         return false;
     }
 
-    std::vector<std::string> targetChars;
-    targetChars.reserve(checkedRows.size());
-    for (const auto& checkedRow : checkedRows)
-    {
-        targetChars.push_back(checkedRow.first);
-    }
-
-    if (m_pendingPathDisplayCells.isEmpty())
-    {
-        int nextMinorDx = m_currentMinorDx;
-        int nextMinorDy = m_currentMinorDy;
-        std::pair<int, int> nextTarget = traverseSMatrix(currentMapData(),
-                                                         targetChars,
-                                                         m_selectedDirection,
-                                                         RecordCurrent_y,
-                                                         RecordCurrent_x,
-                                                         nextMinorDx,
-                                                         nextMinorDy);
-        if (nextTarget.first < 0 || nextTarget.second < 0)
-        {
-            refreshMapViews();
-            return false;
-        }
-
-        m_pendingPathDisplayCells = buildAssistPathToTarget(currentMapData(),
-                                                            targetChars,
-                                                            m_selectedDirection,
-                                                            RecordCurrent_y,
-                                                            RecordCurrent_x,
-                                                            nextTarget.first,
-                                                            nextTarget.second,
-                                                            m_currentMinorDx,
-                                                            m_currentMinorDy);
-        if (m_pendingPathDisplayCells.isEmpty())
-        {
-            refreshMapViews();
-            return false;
-        }
-        m_currentMinorDx = nextMinorDx;
-        m_currentMinorDy = nextMinorDy;
-    }
-
-    QPoint nextDisplayCell = m_pendingPathDisplayCells.takeFirst();
-    bool isFinalTargetStep = m_pendingPathDisplayCells.isEmpty();
-    if (!isFinalTargetStep)
-    {
-        markAssistPathCell(nextDisplayCell.x(), nextDisplayCell.y());
-    }
-
-    qDebug() << "下一步位置：" << nextDisplayCell.y() << ", " << nextDisplayCell.x();
-    setSelectedCell(nextDisplayCell.x(), nextDisplayCell.y(), true, false);
-    refreshMapViews();
+    qDebug() << "下一步位置：" << nextDisplayCell.y() << ", " << nextDisplayCell.x()
+             << "是否吸取点：" << isPickupCell;
     return true;
 }

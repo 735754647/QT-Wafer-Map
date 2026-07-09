@@ -40,9 +40,16 @@ RulerSlider::RulerSlider(Qt::Orientation orientation, QWidget *parent)
 
     image.load(":/images/handle.png");//temppath为图片的路径
 
-    result = image.scaled(handleLabel->width(), handleLabel->height(),Qt::IgnoreAspectRatio, Qt::SmoothTransformation);//放缩图片，以固定大小显示
+    if (!image.isNull())
+    {
+        result = image.scaled(handleLabel->width(), handleLabel->height(),Qt::IgnoreAspectRatio, Qt::SmoothTransformation);//放缩图片，以固定大小显示
 
-    handleLabel->setPixmap(QPixmap::fromImage(result));//在Label控件上显示图片
+        handleLabel->setPixmap(QPixmap::fromImage(result));//在Label控件上显示图片
+    }
+    else
+    {
+        handleLabel->setStyleSheet("background-color: rgb(255, 210, 0); border: 1px solid rgb(40, 40, 40);");
+    }
 
 }
 
@@ -392,13 +399,13 @@ void RulerSlider::setRulerSliderRange(int min, int max)
 
             double pos = ((value()-minNum)/singleStep())*sliderInterval+SIDEDISTANCE;
 
-            handleLabel->move(pos-handleLabel->height()/2,0);
+            handleLabel->move(0, pos - handleLabel->height() / 2);
 
         }
         else
         {
 
-            handleLabel->move(SIDEDISTANCE-handleLabel->height()/2,0);
+            handleLabel->move(0, SIDEDISTANCE - handleLabel->height() / 2);
 
         }
     }

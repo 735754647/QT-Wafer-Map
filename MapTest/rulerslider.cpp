@@ -2,7 +2,6 @@
 #include "QPainter"
 #include "math.h"
 
-#include <QDebug>
 #include <QEvent>
 #include <QMouseEvent>
 
@@ -176,7 +175,7 @@ void RulerSlider::drawSliderMark(QPainter *painter)
 
                 QString strValue = tr("%1").arg(value);
 
-                int fontWidth = fontMetrics().width(strValue)/2;
+                int fontWidth = fontMetrics().horizontalAdvance(strValue)/2;
 
                 painter->drawText(QPointF(startX-fontWidth,BIG_Y+15),strValue);
 
@@ -205,7 +204,7 @@ void RulerSlider::drawSliderMark(QPainter *painter)
 
                     QString strValue = tr("%1").arg(value);
 
-                    int fontWidth = fontMetrics().width(strValue)/2;
+                    int fontWidth = fontMetrics().horizontalAdvance(strValue)/2;
 
                     painter->drawText(QPointF(startX-fontWidth,BIG_Y+15),strValue);
                 }
@@ -215,7 +214,7 @@ void RulerSlider::drawSliderMark(QPainter *painter)
 
                     QString strValue = tr("%1").arg(value);
 
-                    int fontWidth = fontMetrics().width(strValue)/2;
+                    int fontWidth = fontMetrics().horizontalAdvance(strValue)/2;
 
                     painter->drawText(QPointF(startX-fontWidth,BIG_Y+15),strValue);
                 }
@@ -306,8 +305,6 @@ void RulerSlider::eventPosGetValue(QMouseEvent *ev)
 
         handleLabel->move(xpos-handleLabel->width()/2,0);
 
-        qDebug()<<"结果值"<<value;
-
         setValue(value);
 
     }
@@ -361,8 +358,6 @@ void RulerSlider::setRulerSliderRange(int min, int max)
         maxNum = min+DIFFERVALUE;
 
     }
-
-    qDebug()<<"滑动条"<<value()<<minNum<<maxNum;
 
     setMaximum(maxNum);
 

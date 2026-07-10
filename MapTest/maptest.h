@@ -2,41 +2,35 @@
 #define MAPTEST_H
 
 #include <unordered_map>
-#include <iostream>
 #include <string>
 #include <vector>
 #include <QMainWindow>
 #include <QtCore>
-#include <QCheckBox>
-#include <QStyleFactory>
-#include <QFileDialog>
-#include <QHBoxLayout>
-#include <QImageReader>
-#include <QMessageBox>
-#include <QLineEdit>
-#include <QColorDialog>
-#include <QRegularExpressionValidator>
 
-#include "mylabel.h"
-#include "RectangleLabel.h"
-#include "rulerslider.h"
-#include "drawingthread.h"
+class QLabel;
+class QMouseEvent;
+class QPainter;
+class QPixmap;
+class QResizeEvent;
+class QTimer;
+class QWheelEvent;
+class RulerSlider;
 
 enum Direction {
-    LeftToRightTopToBottom,
-    LeftToRightBottomToTop,
-    RightToLeftTopToBottom,
-    RightToLeftBottomToTop,
-    TopToBottomLeftToRight,
-    TopToBottomRightToLeft,
-    BottomToTopLeftToRight,
-    BottomToTopRightToLeft
+    LeftToRightTopToBottom,    // 左到右扫描，整体从上到下换行
+    LeftToRightBottomToTop,    // 左到右扫描，整体从下到上换行
+    RightToLeftTopToBottom,    // 右到左扫描，整体从上到下换行
+    RightToLeftBottomToTop,    // 右到左扫描，整体从下到上换行
+    TopToBottomLeftToRight,    // 上到下扫描，整体从左到右换列
+    TopToBottomRightToLeft,    // 上到下扫描，整体从右到左换列
+    BottomToTopLeftToRight,    // 下到上扫描，整体从左到右换列
+    BottomToTopRightToLeft     // 下到上扫描，整体从右到左换列
 };
 
 enum MapEditSelectionMode {
-    MapEditPoint,
-    MapEditRect,
-    MapEditCircle
+    MapEditPoint,  // 点选模式，只编辑当前点
+    MapEditRect,   // 框选模式，按左上/右下组成矩形选区
+    MapEditCircle  // 圆选模式，以当前点为圆心按半径选区
 };
 
 enum MapLoadMode {
@@ -83,8 +77,8 @@ public:
     int mapRowCount() const;//原始地图行数
     int displayColumnCount() const;//当前显示方向下的列数
     int displayRowCount() const;//当前显示方向下的行数
-    const QMap<int, QMap<int, string>>& sourceMapData() const;//获取原始地图容器，只读
-    const QMap<int, QMap<int, string>>& displayMapData() const;//获取当前显示方向地图容器，只读
+    const QMap<int, QMap<int, std::string>>& sourceMapData() const;//获取原始地图容器，只读
+    const QMap<int, QMap<int, std::string>>& displayMapData() const;//获取当前显示方向地图容器，只读
     QString sourceCellValue(int column, int row) const;//获取原始地图指定坐标内容
     QString displayCellValue(int column, int row) const;//获取当前显示地图指定坐标内容
     Direction mapDirection() const;//当前行进方向
@@ -133,49 +127,38 @@ public:
     QVector<QPoint> pendingMovePathSourceCells() const;//获取当前尚未行走的原始地图坐标路径
 
 private:
-	Ui::MapTest* ui;
+    Ui::MapTest* ui;
 
     double m_scaleFactor=1.0; // 当前的缩放因子
-    const double m_minScaleFactor = 1.0;
-    const double m_maxScaleFactor = 16.0;
-    QTimer *m_pTimer;//定时器
-    QImage Image;
+    const double m_minScaleFactor = 1.0;//大图最小缩放倍率
+    const double m_maxScaleFactor = 16.0;//大图最大缩放倍率
+    QTimer* m_pTimer = nullptr;//寻起点和路径规划共用的步进定时器
     QImage m_mapColorImage;//按当前旋转方向缓存的一格一像素地图
     bool m_mapColorImageDirty = true;//地图内容/颜色变化后重建缓存图
 
-    DrawingThread *m_drawingThread;
+    RulerSlider* BigMapHorizontalslider = nullptr; // 实例化大地图水平刻度尺BigMapHorizontalslider对象
 
-    MyLabel mylabel;// 实例化mylabel对象
+    RulerSlider* BigMapVerticalslider = nullptr;   // 实例化大地图垂直刻度尺BigMapVerticalslider对象
 
-    RectangleLabel rectangleLabel;// 实例化rectangleLabel对象
+    RulerSlider* SmallMapHorizontalslider = nullptr;// 实例化小地图水平刻度尺SmallMapHorizontalslider对象
 
-    RulerSlider *BigMapHorizontalslider = nullptr; // 实例化大地图水平刻度尺BigMapHorizontalslider对象
-
-    RulerSlider *BigMapVerticalslider = nullptr;   // 实例化大地图垂直刻度尺BigMapVerticalslider对象
-
-    RulerSlider *SmallMapHorizontalslider = nullptr;// 实例化小地图水平刻度尺SmallMapHorizontalslider对象
-
-    RulerSlider *SmallMapVerticalslider = nullptr; // 实例化小地图垂直刻度尺SmallMapVerticalslider对象
+    RulerSlider* SmallMapVerticalslider = nullptr; // 实例化小地图垂直刻度尺SmallMapVerticalslider对象
 
     short int rodegrees = 0;//旋转角度
 
-    int Mouse_x = 0, Mouse_y = 0;//鼠标点击位置
-    QPoint m_dragStartPosition;
-    QPoint m_lastDragPosition;
-    QPointF m_viewCenterCell;
-    bool m_isDragging = false;
-    bool m_dragMoved = false;
+    QPoint m_dragStartPosition;//大图拖拽开始时鼠标位置
+    QPoint m_lastDragPosition;//大图拖拽上一次鼠标位置
+    QPointF m_viewCenterCell;//当前大图视图中心所在显示坐标
+    bool m_isDragging = false;//是否正在拖拽平移大图
+    bool m_dragMoved = false;//本次鼠标按下后是否发生过拖动
     int RecordCurrent_x = 0, RecordCurrent_y = 0;//记录容器当前点
-    int BigMapX=0 ,BigMapY=0;//大图点击位置
     int map_columns = 0, map_rows = 0;//地图行列
-
-    bool IsDrawSmallMap = false, IsClickSmallMap = false;//是否画小地图；点击小地图区域画小地图
 
     QString	filTexyename;//地图文件路径
 
-    QMap<int, QMap<int, string>> m_mapData;//X,Y data原始地图容器
+    QMap<int, QMap<int, std::string>> m_mapData;//X,Y data原始地图容器
 
-    QMap<int, QMap<int, string>> rotate_m_mapData;//旋转后地图容器
+    QMap<int, QMap<int, std::string>> rotate_m_mapData;//旋转后地图容器
 
     Direction m_selectedDirection = LeftToRightTopToBottom;//当前行进方向
     int m_currentMinorDx = 0;//当前次方向X，蛇形换行后会更新
@@ -225,15 +208,15 @@ private slots:
 
 	void on_rotate_clicked();//旋转90
 
-    void on_tableWidget_cellClicked(int row, int column);
+    void on_tableWidget_cellClicked(int row, int column);//表格点击：修改已加工字符或选择bin颜色
 
-    void on_start_pushButton_clicked();
+    void on_start_pushButton_clicked();//开始/停止路径规划
 
-    void on_direction_pushButton_clicked();
+    void on_direction_pushButton_clicked();//弹出方向选择窗口
 
 private:
 
-    void ReadMapTxtFile();//读取文件
+    void readMapTextFile();//读取普通文本或Map格式地图
 
     bool configureMapLoadRange(const QString& filePath);//加载前设置地图行列范围
 
@@ -253,12 +236,6 @@ private:
 
     bool eventFilter(QObject* watched, QEvent* event) override;//事件过滤器
 
-    void Paint();//绘制大地图
-
-    void Paint_Secondary();//画小窗口
-
-    void read_image(QString filename);//读取路径图片
-
     void resetMapScale();//恢复原图
 
     void DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const std::unordered_map<std::string, QColor>& colorMap);//绘制小图
@@ -267,9 +244,7 @@ private:
 
     int displayRows() const;//当前显示方向下的行数
 
-    const QMap<int, QMap<int, string>>& currentMapData() const;//按当前旋转角度返回绘图用地图
-
-    QMap<int, QMap<int, string>> currentSearchMapData() const;//路径搜索用地图，已加工坐标临时标记为内部值
+    const QMap<int, QMap<int, std::string>>& currentMapData() const;//按当前旋转角度返回绘图用地图
 
     std::unordered_map<std::string, QColor> buildColorMap() const;//从表格读取bin到颜色的映射
 
@@ -300,8 +275,6 @@ private:
     qint64 sourceCellKey(int x, int y) const;//原始地图坐标生成唯一key
 
     bool isAssistPathDisplayCell(int displayX, int displayY) const;//判断显示坐标是否为借助路径
-
-    bool isProcessedDisplayCell(int displayX, int displayY) const;//判断显示坐标是否已加工
 
     bool isFindStartPathDisplayCell(int displayX, int displayY) const;//判断显示坐标是否为寻起点路线
 
@@ -393,10 +366,7 @@ private:
 
 protected:
 
-    void mouseMoveEvent(QMouseEvent *e);
-    void wheelEvent(QWheelEvent *event);
+    void wheelEvent(QWheelEvent *event);//鼠标滚轮缩放大图
     void resizeEvent(QResizeEvent *event) override;//窗口尺寸变化时同步地图控件
-
-    virtual void mousePressEvent(QMouseEvent*) override;//重写鼠标点击
 };
 #endif // MAPTEST_H

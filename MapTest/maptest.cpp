@@ -1,9 +1,7 @@
-﻿#pragma execution_character_set("utf-8")
 #include "maptest.h"
 #include "ui_maptest.h"
-#include "strCoding.h"
+#include "rulerslider.h"
 #include <queue>
-#include <iostream>
 #include <algorithm>
 #include <unordered_set>
 #include <QMouseEvent>
@@ -12,25 +10,33 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QButtonGroup>
+#include <QCheckBox>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QDirIterator>
+#include <QFileDialog>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
+#include <QHBoxLayout>
+#include <QImageReader>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QRandomGenerator>
+#include <QRegularExpressionValidator>
 #include <QResizeEvent>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QStyleFactory>
 #include <QVBoxLayout>
 #include <QXmlStreamReader>
 #include <QtGui/private/qzipreader_p.h>
@@ -39,13 +45,29 @@
 
 namespace
 {
-const int MaxLoadBinCharCount = 4;
-const int RulerThickness = 35;
-const int ModuleVerticalGap = 20;
-const int StatusVerticalGap = 15;
-const std::string ProcessedCellValue = "\x1D" "PROCESSED";// 内部搜索标记，不显示
-const QString ProcessedCellText = QStringLiteral("已加工");
-const QColor ProcessedCellColor = Qt::white;
+using MapData = QMap<int, QMap<int, std::string>>;
+
+const int MaxLoadBinCharCount = 4;//自定义加载时单个bin最多允许占用的字符数
+const int RulerThickness = 35;//大小地图刻度尺控件预留宽度/高度
+const int ModuleVerticalGap = 20;//小图、表格等模块之间的垂直间距
+const int StatusVerticalGap = 15;//地图状态文字和地图模块之间的垂直间距
+const int MapStepIntervalMs = 100;//寻起点/路径规划自动步进间隔，单位ms
+const QString ProcessedCellText = QStringLiteral("已加工");//表格中已加工统计行的显示名称
+const QColor ProcessedCellColor = Qt::white;//已加工符号颜色无效时使用的默认颜色
+const std::string BlankCellValue = " ";//地图缺失坐标或空白区域统一按空格bin处理
+
+// QMap::value(row) 会复制整行，路径搜索里必须用 constFind 直接取引用。
+const std::string& mapCellValue(const MapData& mapData, int row, int col)
+{
+    const auto rowIter = mapData.constFind(row);
+    if (rowIter == mapData.constEnd())
+    {
+        return BlankCellValue;
+    }
+
+    const auto cellIter = rowIter.value().constFind(col);
+    return cellIter == rowIter.value().constEnd() ? BlankCellValue : cellIter.value();
+}
 
 // 将方向枚举转换成按钮、弹窗中显示的中文说明。
 QString directionText(Direction direction)
@@ -53,23 +75,23 @@ QString directionText(Direction direction)
     switch (direction)
     {
     case LeftToRightTopToBottom:
-        return QStringLiteral("左→右，上→下");
+        return QStringLiteral("左→右,上→下");
     case LeftToRightBottomToTop:
-        return QStringLiteral("左→右，下→上");
+        return QStringLiteral("左→右,下→上");
     case RightToLeftTopToBottom:
-        return QStringLiteral("右→左，上→下");
+        return QStringLiteral("右→左,上→下");
     case RightToLeftBottomToTop:
-        return QStringLiteral("右→左，下→上");
+        return QStringLiteral("右→左,下→上");
     case TopToBottomLeftToRight:
-        return QStringLiteral("上→下，左→右");
+        return QStringLiteral("上→下,左→右");
     case TopToBottomRightToLeft:
-        return QStringLiteral("上→下，右→左");
+        return QStringLiteral("上→下,右→左");
     case BottomToTopLeftToRight:
-        return QStringLiteral("下→上，左→右");
+        return QStringLiteral("下→上,左→右");
     case BottomToTopRightToLeft:
-        return QStringLiteral("下→上，右→左");
+        return QStringLiteral("下→上,右→左");
     }
-    return QStringLiteral("左→右，上→下");
+    return QStringLiteral("左→右,上→下");
 }
 
 // 在方向图标里绘制一段带箭头的线。
@@ -155,16 +177,18 @@ QIcon directionIcon(Direction direction)
     return QIcon(pixmap);
 }
 
+// 单步方向向量，dx/dy取-1、0、1，表示列/行移动方向。
 struct DirectionVector
 {
-    int dx;
-    int dy;
+    int dx;//列方向增量
+    int dy;//行方向增量
 };
 
+// 一种行进方向拆成主方向和次方向，主方向用于换行/换列，次方向用于当前行/列内扫描。
 struct MapDirectionVectors
 {
-    DirectionVector major;
-    DirectionVector minor;
+    DirectionVector major;//主扫描方向
+    DirectionVector minor;//当前行/列内扫描方向
 };
 
 // 返回方向向量的反向，用于蛇形换行或换列。
@@ -217,26 +241,26 @@ MapDirectionVectors directionVectors(Direction direction)
 }
 
 // 判断指定地图坐标是否属于目标bin集合。
-bool containsTarget(const QMap<int, QMap<int, string>>& mapData,
+bool containsTarget(const MapData& mapData,
                     const std::unordered_set<std::string>& targetSet,
                     int row,
                     int col)
 {
-    return targetSet.find(mapData.value(row).value(col)) != targetSet.end();
+    return targetSet.find(mapCellValue(mapData, row, col)) != targetSet.end();
 }
 
 // 判断指定地图坐标是否属于目标bin列表。
-bool containsTarget(const QMap<int, QMap<int, string>>& mapData,
+bool containsTarget(const MapData& mapData,
                     const std::vector<std::string>& targetChars,
                     int row,
                     int col)
 {
-    const std::string value = mapData.value(row).value(col);
+    const std::string& value = mapCellValue(mapData, row, col);
     return std::find(targetChars.begin(), targetChars.end(), value) != targetChars.end();
 }
 
 // 按当前行进方向从地图起始边界查找第一个需要加工的点。
-std::pair<int, int> findFirstTargetPosition(const QMap<int, QMap<int, string>>& mapData,
+std::pair<int, int> findFirstTargetPosition(const MapData& mapData,
                                             const std::vector<std::string>& targetChars,
                                             Direction direction)
 {
@@ -355,14 +379,15 @@ void drawReferenceMarker(QPainter& painter,
     painter.restore();
 }
 
+// 地图加载范围的默认值，供默认/自定义/Excel加载窗口复用。
 struct MapLoadRangeDefaults
 {
-    int startRow = 1;
-    int endRow = 1;
-    int startColumn = 1;
-    int endColumn = 1;
-    int totalRows = 1;
-    int maxColumns = 1;
+    int startRow = 1;//建议起始行，1基
+    int endRow = 1;//建议结束行，1基
+    int startColumn = 1;//建议起始列，1基
+    int endColumn = 1;//建议结束列，1基
+    int totalRows = 1;//文件可选择的总行数
+    int maxColumns = 1;//文件可选择的最大列数
 };
 
 // 去掉文本行尾的回车换行，避免按列截取时多算一列。
@@ -416,10 +441,11 @@ bool isXlsxFilePath(const QString& filePath)
            suffix == QStringLiteral("xltx");
 }
 
+// Excel单元格坐标，行列均按Excel习惯从1开始保存。
 struct XlsxCellRef
 {
-    int row = 0;
-    int column = 0;
+    int row = 0;//单元格行号，1基
+    int column = 0;//单元格列号，1基
 };
 
 // 记录Excel工作表中某一行实际出现的单元格范围，用来推断地图主体区域。
@@ -431,14 +457,15 @@ struct XlsxRowSpan
     int cellCount = 0;
 };
 
+// 记录一类Excel连续行跨度出现的次数，用于找出最像地图主体的区域。
 struct XlsxSpanProfile
 {
-    int firstColumn = 1;
-    int lastColumn = 1;
-    int cellCount = 0;
-    int rowCount = 0;
-    int firstRow = 0;
-    int lastRow = 0;
+    int firstColumn = 1;//该跨度的起始列
+    int lastColumn = 1;//该跨度的结束列
+    int cellCount = 0;//该跨度内单元格数量
+    int rowCount = 0;//同类跨度连续/重复出现的行数
+    int firstRow = 0;//首次出现行
+    int lastRow = 0;//最后出现行
 };
 
 // 将Excel列名（A、AA等）转换为从1开始的列号。
@@ -890,8 +917,9 @@ bool readWaferMapRows(const QString& filePath, QVector<QByteArray>& rows, MapLoa
 
 }
 
-QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_mapDat,
-                                        const std::vector<string>& targetChars,
+// 生成从当前点到目标点的可行路径；目标点由蛇形规则决定，这里只负责必要绕路。
+QVector<QPoint> buildAssistPathToTarget(const MapData& m_mapDat,
+                                        const std::vector<std::string>& targetChars,
                                         Direction direction,
                                         int startRow,
                                         int startCol,
@@ -900,8 +928,9 @@ QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_ma
                                         int currentMinorDx,
                                         int currentMinorDy);
 
-std::pair<int, int> traverseSMatrix(const QMap<int, QMap<int, string>>& m_mapDat,
-                                    const std::vector<string>& targetChars,
+// 按蛇形扫描规则寻找下一颗目标bin，返回值为(row, col)。
+std::pair<int, int> traverseSMatrix(const MapData& m_mapDat,
+                                    const std::vector<std::string>& targetChars,
                                     Direction direction,
                                     int startRow,
                                     int startCol,
@@ -945,37 +974,22 @@ MapTest::MapTest(QWidget* parent)
 
     syncMapWidgetGeometry();
 
-	ui->small_label->installEventFilter(this);
+    ui->small_label->installEventFilter(this);
     ui->main_windows_label->installEventFilter(this);
     ui->big_map_module->installEventFilter(this);
     ui->small_map_module->installEventFilter(this);
 
-    m_drawingThread = new DrawingThread(ui->tableWidget,m_mapData,map_columns,map_rows,map_columns, map_rows,this);
-
     m_pTimer = new QTimer(this);
 
-    connect(m_pTimer, SIGNAL(timeout()), this, SLOT(handleTimeout()));
+    connect(m_pTimer, &QTimer::timeout, this, &MapTest::handleTimeout);
 
     setupMapFunctionPanel();
     updateDirectionButton();
-
 }
 
-// 释放界面、刻度尺和绘图线程资源。
+// 释放界面资源；其余QObject子对象由父子关系自动销毁。
 MapTest::~MapTest()
 {
-    BigMapHorizontalslider=NULL;
-    BigMapVerticalslider=NULL;
-    SmallMapHorizontalslider=NULL;
-    SmallMapVerticalslider=NULL;
-
-    if (m_drawingThread)
-        {
-            m_drawingThread->quit();
-            m_drawingThread->wait();
-            delete m_drawingThread;
-        }
-
     delete ui;
 }
 
@@ -1053,13 +1067,13 @@ int MapTest::displayRowCount() const
 }
 
 // 对外接口：返回原始地图容器，只读；引用在重新加载/编辑地图后可能变化。
-const QMap<int, QMap<int, string>>& MapTest::sourceMapData() const
+const MapData& MapTest::sourceMapData() const
 {
     return m_mapData;
 }
 
 // 对外接口：返回当前显示方向下的地图容器，只读；0度时就是原始地图。
-const QMap<int, QMap<int, string>>& MapTest::displayMapData() const
+const MapData& MapTest::displayMapData() const
 {
     return currentMapData();
 }
@@ -1072,7 +1086,7 @@ QString MapTest::sourceCellValue(int column, int row) const
         return QString();
     }
 
-    return QString::fromStdString(m_mapData.value(row).value(column));
+    return QString::fromStdString(mapCellValue(m_mapData, row, column));
 }
 
 // 对外接口：获取当前显示地图指定坐标内容。
@@ -1083,7 +1097,7 @@ QString MapTest::displayCellValue(int column, int row) const
         return QString();
     }
 
-    return QString::fromStdString(currentMapData().value(row).value(column));
+    return QString::fromStdString(mapCellValue(currentMapData(), row, column));
 }
 
 // 对外接口：当前行进方向。
@@ -1399,7 +1413,7 @@ bool MapTest::prepareNextPickupRoute()
 
     int nextMinorDx = m_currentMinorDx;
     int nextMinorDy = m_currentMinorDy;
-    QMap<int, QMap<int, string>> searchMapData = currentSearchMapData();
+    const MapData& searchMapData = currentMapData();
     std::pair<int, int> nextTarget = traverseSMatrix(searchMapData,
                                                      targetChars,
                                                      m_selectedDirection,
@@ -1597,67 +1611,48 @@ QVector<QPoint> MapTest::verifyPoints() const
     return m_verifyPointsSource;
 }
 
-//获取CheckBox
-QCheckBox* getCheckBox(QTableWidget*table,int row ,int column)
+namespace
 {
-    QWidget* pWidget = 0;
-    pWidget = table->cellWidget(row,column); //找到单元格
-    QCheckBox *pCheckBox = 0;
-    bool bNew = true;
-    if(pWidget != 0) //
+
+// 获取或创建表格单元格里的居中复选框。
+QCheckBox* ensureTableCheckBox(QTableWidget* table, int row, int column)
+{
+    QWidget* cellWidget = table->cellWidget(row, column);
+    if (cellWidget == nullptr)
     {
-        bNew = false;
+        cellWidget = new QWidget(table);
+        QHBoxLayout* layout = new QHBoxLayout(cellWidget);
+        QCheckBox* checkBox = new QCheckBox(cellWidget);
+        checkBox->setFont(table->font());
+        checkBox->setFocusPolicy(Qt::NoFocus);
+
+        if (QStyle* fusionStyle = QStyleFactory::create("fusion"))
+        {
+            fusionStyle->setParent(checkBox);
+            checkBox->setStyle(fusionStyle);
+        }
+
+        checkBox->setStyleSheet(QStringLiteral("QCheckBox { margin: 1px; border: 0; }"
+                                                "QCheckBox::indicator { width: 16px; height: 16px; }"));
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+        layout->addWidget(checkBox, 0, Qt::AlignCenter);
+        table->setCellWidget(row, column, cellWidget);
     }
-    if(bNew)
-    {
-        pWidget = new QWidget(table); //创建一个widget
-        QHBoxLayout *hLayout = new QHBoxLayout(pWidget); //创建布局
-        pCheckBox = new QCheckBox(pWidget);
-        //根据objectName ,去拆解所属的tableWidget 、行、列
-        pCheckBox->setObjectName(QString("%1_%2_%3_Itme").arg(table->objectName()).arg(row).arg(column));
-        pCheckBox->setChecked(false);
-        pCheckBox->setFont(table->font());
-        pCheckBox->setFocusPolicy(Qt::NoFocus);
-        pCheckBox->setStyle(QStyleFactory::create("fusion"));
-        pCheckBox->setStyleSheet(QString(".QCheckBox {margin:1px;border:0px;}QCheckBox::indicator {width: %1px; height: %1px; }").arg(16));
-        hLayout->addWidget(pCheckBox); //添加
-        hLayout->setMargin(0); //设置边缘距离
-        hLayout->setAlignment(pCheckBox, Qt::AlignCenter); //居中
-        hLayout->setSpacing(0);
-        pWidget->setLayout(hLayout); //设置widget的布局
-        table->setCellWidget(row,column,pWidget);
-    }
-    QList<QCheckBox *> allCheckBoxs =  pWidget->findChildren<QCheckBox *>();
-    if(allCheckBoxs.size() > 0)
-        pCheckBox = allCheckBoxs.first();
-    return pCheckBox;
+
+    return cellWidget->findChild<QCheckBox*>();
 }
 
-//处理CheckBox
-QCheckBox* setCheckBox(QTableWidget*table,int row ,int column,bool checkd)
+// 设置表格指定单元格的加工选择状态。
+void setTableCheckBox(QTableWidget* table, int row, int column, bool checked)
 {
-    QCheckBox *check = getCheckBox(table,row,column);
-    if(check != 0) //
+    QCheckBox* checkBox = ensureTableCheckBox(table, row, column);
+    if (checkBox != nullptr)
     {
-        check->setChecked(checkd);
+        checkBox->setChecked(checked);
     }
-    QCheckBox::connect(check,&QCheckBox::stateChanged,[=]{
-        QString objectName = check->objectName();
-        QStringList nameList = objectName.split("_");//拆解
-        if(nameList.count() == 4)
-        {
-            QString tableName = nameList.at(0);//表格名称
-            int row = nameList.at(1).toInt();//行
-            int column = nameList.at(2).toInt();//列
-            bool checked = check->isChecked();//是否被选中
+}
 
-            //知道了表格、行、列，就可以执行我们所需要的操作了。。。
-            qDebug() << QString("%1表第%2行第%3列是否被选中：%4")
-                            .arg(tableName).arg(row).arg(column).arg(checked?"是":"否");
-
-        }
-    });
-    return check;
 }
 
 //使用QImageReader的预设缩放来加载本地图片
@@ -1679,49 +1674,6 @@ QPixmap MapTest::LoadImageFunction(const QString &imagePath,const QSize &targets
     QPixmap pixmap=QPixmap::fromImageReader(&imageReader);
 
     return pixmap;
-}
-
-// 将图片指定范围刷白并保存，保留给旧的图片调试流程使用。
-QImage FullImage(const QString &imagePath,double StartPoint, double EndPoint)
-{
-    QImage image;
-    //加载图片
-    image.load(imagePath);
-
-    //遍历每个像素点
-    for(int i=StartPoint;i<EndPoint;i++)
-    {
-        for(int j=StartPoint;j<EndPoint;j++)
-        {
-
-           image.setPixelColor(i,j,Qt::white);
-
-        }
-    }
-
-    //保存为新图片
-    image.save("./chip.png");
-    return image;
-
-}
-
-// 填充图像的指定矩形区域
-void fillImageRect(const QString &imagePath, const QRectF& rect, const QColor& color)
-{
-    QImage image;
-    //加载图片
-    image.load(imagePath);
-    // 创建一个画家对象，用于在图像上进行绘制操作
-    QPainter painter(&image);
-
-    // 设置填充颜色
-    painter.setBrush(color);
-
-    // 绘制填充区域
-    painter.fillRect(rect, painter.brush());
-
-    // 保存填充后的图像
-    image.save(imagePath);
 }
 
 //是否包含空格
@@ -1847,8 +1799,6 @@ void removeLinesWithoutSpacePattern(QVector<QByteArray>& mapData)
                 maxCountLength = it.key();
             }
         }
-
-        qDebug() << "Most frequent pattern length:" << maxCountLength;
 
         auto it = mapData.begin();
         while (it != mapData.end()) {
@@ -2099,12 +2049,6 @@ void removeWhitespaceRowsAndColumns(QVector<QByteArray>& data)
 //读取Txt按钮
 void MapTest::on_read_pushButton_clicked()
 {
-    if ( m_drawingThread&&m_drawingThread->isRunning())
-    {
-        // Drawing is already in progress
-        return;
-	}
-
     int loadMode = ui->map_load_mode_comboBox->currentIndex();
 
     QString selectedFileName = QFileDialog::getOpenFileName(this, "打开晶元图", "./",tr("*"));
@@ -2177,7 +2121,7 @@ bool MapTest::loadMapFileFromPath(const QString& filePath, int loadMode)
     m_assistPathSourceCells.clear();
     clearFindStartRoute();
 
-    ReadMapTxtFile();
+    readMapTextFile();
 
     ui->label->setText(" 读取完成！! !");
     return true;
@@ -2537,7 +2481,7 @@ void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& st
     int defaultTargetCount = -1;
     for (const std::string& type : stringTypes)
     {
-        if (type == ProcessedCellValue || type == " ")
+        if (type == " ")
         {
             continue;
         }
@@ -2553,14 +2497,9 @@ void MapTest::finishLoadedMapData(const std::unordered_map<std::string, int>& st
     ui->tableWidget->setEditTriggers(QTableWidget::NoEditTriggers);
     for (int j = 0; j < (int)stringTypes.size(); j++)
     {
-        if (stringTypes[j] == ProcessedCellValue)
-        {
-            continue;
-        }
-
         QColor clr(rand() % 256, rand() % 256, rand() % 256);
         ui->tableWidget->setRowCount(EffectiveNum + 1);
-        setCheckBox(ui->tableWidget, EffectiveNum, 0, stringTypes[j] == defaultTargetValue);
+        setTableCheckBox(ui->tableWidget, EffectiveNum, 0, stringTypes[j] == defaultTargetValue);
         ui->tableWidget->setItem(EffectiveNum, 1, new QTableWidgetItem(QString::fromStdString(stringTypes[j])));
         ui->tableWidget->setItem(EffectiveNum, 2, new QTableWidgetItem(QString::number(stringCounts.at(stringTypes[j]))));
         ui->tableWidget->setItem(EffectiveNum, 3, new QTableWidgetItem(QString::number(stringCounts.at(stringTypes[j]))));
@@ -2848,7 +2787,7 @@ bool MapTest::loadExcelMapFile()
     {
         for (int col = 0; col < columns; ++col)
         {
-            std::string value = m_mapData.value(row).value(col);
+            const std::string& value = mapCellValue(m_mapData, row, col);
             stringCounts[value]++;
             if (value != " ")
             {
@@ -2868,7 +2807,7 @@ bool MapTest::loadExcelMapFile()
 }
 
 //计算出现频率最高的列数
-QPair<int, int> currenceLength(const QString &filePath, int &mostFrequentLength) {
+QPair<int, int> findMostFrequentLineRange(const QString& filePath, int& mostFrequentLength) {
     QMap<int, int> lengthCounts;
         QMap<int, int> lengthFirstLine;
         QMap<int, int> lengthLastLine;
@@ -2876,7 +2815,6 @@ QPair<int, int> currenceLength(const QString &filePath, int &mostFrequentLength)
         // 打开文件
         QFile file(filePath);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            qDebug() << "无法打开文件：" << file.errorString();
             return qMakePair(-1, -1);
         }
 
@@ -2911,7 +2849,7 @@ QPair<int, int> currenceLength(const QString &filePath, int &mostFrequentLength)
     }
 
 //读txt
-void MapTest::ReadMapTxtFile()
+void MapTest::readMapTextFile()
 {
     if (m_activeLoadMode == CsvLoadMode)
     {
@@ -2952,7 +2890,7 @@ void MapTest::ReadMapTxtFile()
             int mostFrequentColumn = 0;
             if (!isWaferMapFile)
             {
-                QPair<int, int> result = currenceLength(filTexyename, mostFrequentColumn);
+                QPair<int, int> result = findMostFrequentLineRange(filTexyename, mostFrequentColumn);
                 if (result.first > 0 && result.second >= result.first)
                 {
                     startRow = result.first;
@@ -2965,9 +2903,6 @@ void MapTest::ReadMapTxtFile()
         endRow = clampToRange(endRow, startRow, defaults.totalRows);
         startColumn = clampToRange(startColumn, 1, defaults.maxColumns);
         endColumn = clampToRange(endColumn, startColumn, defaults.maxColumns);
-
-        qDebug() << "加载范围 行:" << startRow << "-" << endRow
-                 << "列:" << startColumn << "-" << endColumn;
 
     QVector<QByteArray> mapData;
 
@@ -3120,10 +3055,6 @@ void MapTest::ReadMapTxtFile()
     int defaultTargetCount = -1;
     for (const std::string& type : stringTypes)
     {
-        if (type == ProcessedCellValue)
-        {
-            continue;
-        }
         int count = m_stringCount[type];
         if (count > defaultTargetCount)
         {
@@ -3136,16 +3067,11 @@ void MapTest::ReadMapTxtFile()
     ui->tableWidget->setEditTriggers(QTableWidget::NoEditTriggers);//不能编辑
     for (int j = 0; j < (int)stringTypes.size(); j++)
     {
-            if (stringTypes[j] == ProcessedCellValue)
-            {
-                continue;
-            }
-
             QColor clr(rand() % 256, rand() % 256, rand() % 256);//获取随机颜
 
             ui->tableWidget->setRowCount(EffectiveNum+1);//新增一行
 
-            setCheckBox(ui->tableWidget,EffectiveNum,0,stringTypes[j] == defaultTargetValue);
+            setTableCheckBox(ui->tableWidget, EffectiveNum, 0, stringTypes[j] == defaultTargetValue);
 
             ui->tableWidget->setItem(EffectiveNum, 1, new QTableWidgetItem(QString::fromStdString(stringTypes[j]))); //在新建行插入ascll
 
@@ -3156,8 +3082,6 @@ void MapTest::ReadMapTxtFile()
             ui->tableWidget->item(EffectiveNum, 4)->setBackground(clr);
 
 			EffectiveNum++;
-
-            cout << stringTypes[j]<< ":" << m_stringCount[stringTypes[j]] << endl; //输出相应的字符和出现次数
 
     }
     //设置已加工
@@ -3461,13 +3385,11 @@ bool MapTest::eventFilter(QObject* watched, QEvent* event)
         {
             // 输入为空，发出警告或禁止用户离开单元格
             QMessageBox::warning(this, "Warning", "不能设置为空!");
-            qDebug() << "Input cannot be empty!";
             // 例如，您可以显示一个警告对话框，或者强制重新编辑该单元格
         }
         else if (text.length() > 1)
         {
             // 输入超过一个字符，发出警告或截取第一个字符
-            qDebug() << "Input should be a single character!";
             // 例如，您可以显示一个警告对话框，并截取第一个字符
             editor->setText(text.left(1));
         }
@@ -3475,46 +3397,6 @@ bool MapTest::eventFilter(QObject* watched, QEvent* event)
 
 	return QWidget::eventFilter(watched, event);
 
-}
-
-//画晶元
-void MapTest::Paint()
-{
-
-	if (m_mapData.isEmpty())
-    {
-        ui->main_windows_label->clear();
-        ui->small_label->clear();
-        return;
-    }
-
-    m_scaleFactor = 1.0;
-    BigMapX = 0;
-    BigMapY = 0;
-    m_isDragging = false;
-    m_dragMoved = false;
-    RecordCurrent_x = clampToRange(RecordCurrent_x, 0, displayColumns() - 1);
-    RecordCurrent_y = clampToRange(RecordCurrent_y, 0, displayRows() - 1);
-    centerViewOnCell(RecordCurrent_x, RecordCurrent_y);
-    refreshMapViews();
-}
-
-//画小窗口
-void MapTest::Paint_Secondary()
-{
-    renderSmallMap(buildColorMap());
-}
-
-//读取图片 并显示
-void MapTest::read_image(QString filename)
-{
-	if (filename.isEmpty())
-	{
-		return;
-	}   
-    QPixmap Pixmap=LoadImageFunction(filename,ui->main_windows_label->size());
-    ui->main_windows_label->setPixmap(Pixmap);
-    Image = Pixmap.toImage();
 }
 
 // 公共绘制函数
@@ -3536,12 +3418,9 @@ void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const 
 
     int startX = centerX - cellCount / 2;
     int startY = centerY - cellCount / 2;
-    const QMap<int, QMap<int, string>>& mapData = currentMapData();
+    const MapData& mapData = currentMapData();
     const int columns = displayColumns();
     const int rows = displayRows();
-    const std::string processedValue = m_processedCellText.toStdString();
-    auto processedColorIter = colorMap.find(processedValue);
-    QColor processedColor = processedColorIter != colorMap.end() ? processedColorIter->second : ProcessedCellColor;
 
     painter.setPen(QPen(QColor(45, 45, 45), 1));
 
@@ -3566,14 +3445,11 @@ void MapTest::DrawSmallMap(QLabel* targetLabel, int centerX, int centerY, const 
             auto iter = colorMap.find(ASCII);
             bool isFindStartPath = isFindStartPathDisplayCell(mapX, mapY);
             bool isAssistPath = isAssistPathDisplayCell(mapX, mapY);
-            bool isProcessed = isProcessedDisplayCell(mapX, mapY);
 
             if (isFindStartPath) {
                 painter.fillRect(rect, QColor(255, 178, 70));
             } else if (isAssistPath) {
                 painter.fillRect(rect, QColor(165, 165, 165));
-            } else if (isProcessed) {
-                painter.fillRect(rect, processedColor);
             } else if (iter != colorMap.end()) {
                 painter.fillRect(rect, iter->second);
             } else if (ASCII == " ") {
@@ -3638,31 +3514,13 @@ int MapTest::displayRows() const
 }
 
 // 根据当前旋转角度选择原始地图或旋转后的地图用于绘制。
-const QMap<int, QMap<int, string>>& MapTest::currentMapData() const
+const MapData& MapTest::currentMapData() const
 {
     if (rodegrees == 0)
     {
         return m_mapData;
     }
     return rotate_m_mapData;
-}
-
-// 路径搜索用地图：不修改原始容器，只把已加工坐标临时标记成内部值，避免再次当目标。
-QMap<int, QMap<int, string>> MapTest::currentSearchMapData() const
-{
-    QMap<int, QMap<int, string>> mapData = currentMapData();
-    for (qint64 key : m_processedSourceCells)
-    {
-        int sourceX = int(quint32(key));
-        int sourceY = int(key >> 32);
-        QPoint displayCell = sourceToDisplayCell(sourceX, sourceY);
-        if (displayCell.x() >= 0 && displayCell.y() >= 0 &&
-            displayCell.x() < displayColumns() && displayCell.y() < displayRows())
-        {
-            mapData[displayCell.y()][displayCell.x()] = ProcessedCellValue;
-        }
-    }
-    return mapData;
 }
 
 // 标记缓存图失效，下次刷新大图时再按需重建。
@@ -3683,11 +3541,8 @@ void MapTest::rebuildMapColorImage(const std::unordered_map<std::string, QColor>
         return;
     }
 
-    const QMap<int, QMap<int, string>>& mapData = currentMapData();
+    const MapData& mapData = currentMapData();
     const std::string blankCell(" ");
-    const std::string processedValue = m_processedCellText.toStdString();
-    auto processedColorIter = colorMap.find(processedValue);
-    QColor processedColor = processedColorIter != colorMap.end() ? processedColorIter->second : ProcessedCellColor;
     m_mapColorImage = QImage(columns, rows, QImage::Format_RGB32);
     m_mapColorImage.fill(Qt::white);
 
@@ -3710,10 +3565,6 @@ void MapTest::rebuildMapColorImage(const std::unordered_map<std::string, QColor>
             else if (isAssistPathDisplayCell(col, row))
             {
                 color = QColor(165, 165, 165);
-            }
-            else if (isProcessedDisplayCell(col, row))
-            {
-                color = processedColor;
             }
             else
             {
@@ -3896,7 +3747,7 @@ bool MapTest::updateProcessedCellText(const QString& text, int row)
         {
             qint64 key = sourceCellKey(sourceX, sourceY);
             if (!m_processedSourceCells.contains(key) &&
-                m_mapData.value(sourceY).value(sourceX) == stdValue)
+                mapCellValue(m_mapData, sourceY, sourceX) == stdValue)
             {
                 QMessageBox::warning(this,
                                      QStringLiteral("已加工字符"),
@@ -3952,7 +3803,7 @@ bool MapTest::processCurrentCellIfChecked()
     QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
     int sourceX = clampToRange(sourceCell.x(), 0, map_columns - 1);
     int sourceY = clampToRange(sourceCell.y(), 0, map_rows - 1);
-    std::string currentValue = m_mapData.value(sourceY).value(sourceX);
+    std::string currentValue = mapCellValue(m_mapData, sourceY, sourceX);
     auto value = checkedRows.find(currentValue);
     if (value == checkedRows.end())
     {
@@ -4161,23 +4012,6 @@ bool MapTest::isAssistPathDisplayCell(int displayX, int displayY) const
     return m_assistPathSourceCells.contains(sourceCellKey(sourceCell.x(), sourceCell.y()));
 }
 
-// 判断显示坐标是否已经被标记为已加工。
-bool MapTest::isProcessedDisplayCell(int displayX, int displayY) const
-{
-    if (displayX < 0 || displayY < 0 || displayX >= displayColumns() || displayY >= displayRows())
-    {
-        return false;
-    }
-
-    QPoint sourceCell = displayToSourceCell(displayX, displayY);
-    if (sourceCell.x() < 0 || sourceCell.y() < 0 ||
-        sourceCell.x() >= map_columns || sourceCell.y() >= map_rows)
-    {
-        return false;
-    }
-    return m_processedSourceCells.contains(sourceCellKey(sourceCell.x(), sourceCell.y()));
-}
-
 // 判断显示坐标是否属于寻起点路线。
 bool MapTest::isFindStartPathDisplayCell(int displayX, int displayY) const
 {
@@ -4260,8 +4094,6 @@ void MapTest::setSelectedCell(int x, int y, bool centerView, bool refresh)
 
     RecordCurrent_x = clampToRange(x, 0, displayColumns() - 1);
     RecordCurrent_y = clampToRange(y, 0, displayRows() - 1);
-    BigMapX = 0;
-    BigMapY = 0;
 
     if (centerView)
     {
@@ -4343,7 +4175,7 @@ bool MapTest::prepareFindStartRoute()
 
     auto buildSmartSegment = [this, &targetSet](const QPoint& from, const QPoint& to) {
         QVector<QPoint> path;
-        QMap<int, QMap<int, string>> mapData = currentSearchMapData();
+        const MapData& mapData = currentMapData();
         const int rows = displayRows();
         const int columns = displayColumns();
         if (rows <= 0 || columns <= 0)
@@ -4367,8 +4199,8 @@ bool MapTest::prepareFindStartRoute()
                 return 1;
             }
 
-            std::string value = mapData.value(row).value(col, std::string(" "));
-            if (value == ProcessedCellValue || targetSet.find(value) != targetSet.end())
+            const std::string& value = mapCellValue(mapData, row, col);
+            if (targetSet.find(value) != targetSet.end())
             {
                 return 1;
             }
@@ -4539,7 +4371,7 @@ bool MapTest::startFindStartPoint()
 
     if (!m_hasFoundStartPoint)
     {
-        m_pTimer->start(100);
+        m_pTimer->start(MapStepIntervalMs);
     }
     return true;
 }
@@ -4801,7 +4633,7 @@ void MapTest::ensureMapTypeRow(const QString& value)
 
     int insertRow = qMax(0, ui->tableWidget->rowCount() - 1);
     ui->tableWidget->insertRow(insertRow);
-    setCheckBox(ui->tableWidget, insertRow, 0, false);
+    setTableCheckBox(ui->tableWidget, insertRow, 0, false);
     ui->tableWidget->setItem(insertRow, 1, new QTableWidgetItem(value));
     ui->tableWidget->setItem(insertRow, 2, new QTableWidgetItem(QStringLiteral("0")));
     ui->tableWidget->setItem(insertRow, 3, new QTableWidgetItem(QStringLiteral("0")));
@@ -4816,9 +4648,16 @@ void MapTest::updateTableCountsFromMapData()
     std::unordered_map<std::string, int> counts;
     for (int row = 0; row < map_rows; ++row)
     {
+        const auto rowIter = m_mapData.constFind(row);
+        if (rowIter == m_mapData.constEnd())
+        {
+            continue;
+        }
+
         for (int col = 0; col < map_columns; ++col)
         {
-            counts[m_mapData.value(row).value(col)]++;
+            const auto cellIter = rowIter.value().constFind(col);
+            counts[cellIter == rowIter.value().constEnd() ? BlankCellValue : cellIter.value()]++;
         }
     }
 
@@ -5060,7 +4899,7 @@ void MapTest::renderMainMap()
     painter.setRenderHint(QPainter::Antialiasing, false);
 
     QRectF view = currentViewRect();
-    const QMap<int, QMap<int, string>>& mapData = currentMapData();
+    const MapData& mapData = currentMapData();
     std::unordered_map<std::string, QColor> colorMap = buildColorMap();
     const int columns = displayColumns();
     const int rows = displayRows();
@@ -5075,11 +4914,8 @@ void MapTest::renderMainMap()
     const int pixelHeight = ui->main_windows_label->height();
     const bool drawCellText = cellWidth >= 10 && cellHeight >= 10;
     const std::string blankCell(" ");
-    const std::string processedValue = m_processedCellText.toStdString();
-    auto processedColorIter = colorMap.find(processedValue);
-    QColor processedColor = processedColorIter != colorMap.end() ? processedColorIter->second : ProcessedCellColor;
 
-    auto cellColor = [this, &colorMap, processedColor](const std::string& value, int col, int row) {
+    auto cellColor = [this, &colorMap](const std::string& value, int col, int row) {
         if (isFindStartPathDisplayCell(col, row))
         {
             return QColor(255, 178, 70);
@@ -5087,10 +4923,6 @@ void MapTest::renderMainMap()
         if (isAssistPathDisplayCell(col, row))
         {
             return QColor(165, 165, 165);
-        }
-        if (isProcessedDisplayCell(col, row))
-        {
-            return processedColor;
         }
 
         auto iter = colorMap.find(value);
@@ -5178,7 +5010,6 @@ void MapTest::renderMainMap()
     drawMainMapEditSelection(painter, view, cellWidth, cellHeight);
     drawMainMapMarkers(painter, view, cellWidth, cellHeight);
 
-    Image = pixmap.toImage();
     ui->main_windows_label->setPixmap(pixmap);
     ui->main_windows_label->update();
     ui->label->setText("运行时间: " + QString::number(mstimer.nsecsElapsed() / 1000000.0, 'f', 2) + "ms");
@@ -5274,7 +5105,7 @@ void MapTest::updateDirectionButton()
 {
     ui->direction_pushButton->setIcon(directionIcon(m_selectedDirection));
     ui->direction_pushButton->setIconSize(QSize(52, 34));
-    ui->direction_pushButton->setText(QStringLiteral("行进方向：%1").arg(directionText(m_selectedDirection)));
+    ui->direction_pushButton->setText(QStringLiteral("行进方向:%1").arg(directionText(m_selectedDirection)));
     ui->direction_pushButton->setToolTip(QStringLiteral("点击选择行进方向"));
 }
 
@@ -5420,7 +5251,7 @@ void MapTest::setupMapFunctionPanel()
         {
             targetChars.push_back(checkedRow.first);
         }
-        std::pair<int, int> firstTarget = findFirstTargetPosition(currentSearchMapData(), targetChars, m_selectedDirection);
+        std::pair<int, int> firstTarget = findFirstTargetPosition(currentMapData(), targetChars, m_selectedDirection);
         if (firstTarget.first >= 0 && firstTarget.second >= 0)
         {
             setSelectedCell(firstTarget.second, firstTarget.first, true, false);
@@ -5845,7 +5676,7 @@ void MapTest::resetMapScale()
         m_hasEditRectStart = false;
         m_hasEditRectEnd = false;
         ui->tableWidget->setRowCount(0);
-        ReadMapTxtFile();
+        readMapTextFile();
         ui->label->setText(QStringLiteral(" 已恢复原始Map"));
         return;
     }
@@ -5855,8 +5686,6 @@ void MapTest::resetMapScale()
         return;
     }
 
-    BigMapX = 0;
-    BigMapY = 0;
     m_scaleFactor = 1.0;
     RecordCurrent_x = clampToRange(RecordCurrent_x, 0, displayColumns() - 1);
     RecordCurrent_y = clampToRange(RecordCurrent_y, 0, displayRows() - 1);
@@ -5875,12 +5704,6 @@ void MapTest::wheelEvent(QWheelEvent *event)
     }
     QMainWindow::wheelEvent(event);
 }
-//鼠标拖拽
-void MapTest::mouseMoveEvent(QMouseEvent *e)
-{
-    QMainWindow::mouseMoveEvent(e);
-}
-
 // 窗口或布局尺寸变化后，同步刻度尺和地图绘制尺寸。
 void MapTest::resizeEvent(QResizeEvent *event)
 {
@@ -5892,11 +5715,6 @@ void MapTest::resizeEvent(QResizeEvent *event)
     }
 }
 
-//鼠标按下
-void MapTest::mousePressEvent(QMouseEvent* e)
-{
-    QMainWindow::mousePressEvent(e);
-}
 //确认
 void MapTest::on_sure_pushButton_clicked()
 {
@@ -5905,24 +5723,13 @@ void MapTest::on_sure_pushButton_clicked()
           return;
       }
 
-      if (!processCurrentCellIfChecked())
-      {
-          // 值不存在于 checkedRows 中
-          std::cout << "Value not found in checkedRows." << std::endl;
-      }
-
-
-     refreshMapViews();
+      processCurrentCellIfChecked();
+      refreshMapViews();
 
 }
 //旋转
 void MapTest::on_rotate_clicked()
 {
-    if ( m_drawingThread&&m_drawingThread->isRunning())
-    {
-        // Drawing is already in progress
-        return;
-    }
 	if (m_mapData.isEmpty()) { return; }
     QPoint sourceCell = displayToSourceCell(RecordCurrent_x, RecordCurrent_y);
     m_pendingPathDisplayCells.clear();
@@ -6028,8 +5835,8 @@ void MapTest::on_tableWidget_cellClicked(int row, int column)
 }
 
 // 智能借助：终点仍由原路径规则决定；不加工/空白区域按高代价处理，只有绕路太远时才借助。
-QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_mapDat,
-                                        const std::vector<string>& targetChars,
+QVector<QPoint> buildAssistPathToTarget(const MapData& m_mapDat,
+                                        const std::vector<std::string>& targetChars,
                                         Direction direction,
                                         int startRow,
                                         int startCol,
@@ -6095,8 +5902,8 @@ QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_ma
             return normalCost;
         }
 
-        std::string value = m_mapDat.value(row).value(col);
-        if (value == ProcessedCellValue || targetSet.find(value) != targetSet.end())
+        const std::string& value = mapCellValue(m_mapDat, row, col);
+        if (targetSet.find(value) != targetSet.end())
         {
             return normalCost;
         }
@@ -6186,8 +5993,8 @@ QVector<QPoint> buildAssistPathToTarget(const QMap<int, QMap<int, string>>& m_ma
 }
 
 // 按原有蛇形规则查找下一个加工目标，只决定终点，绕路由借助路径处理。
-std::pair<int, int> traverseSMatrix(const QMap<int, QMap<int, string>>& m_mapDat,
-                                    const std::vector<string>& targetChars,
+std::pair<int, int> traverseSMatrix(const MapData& m_mapDat,
+                                    const std::vector<std::string>& targetChars,
                                     Direction direction,
                                     int startRow,
                                     int startCol,
@@ -6335,7 +6142,7 @@ bool MapTest::startMapPathPlanning()
         targetChars.push_back(checkedRow.first);
     }
 
-    QMap<int, QMap<int, string>> searchMapData = currentSearchMapData();
+    const MapData& searchMapData = currentMapData();
     if (!m_hasStartPoint && !containsTarget(searchMapData, targetChars, RecordCurrent_y, RecordCurrent_x))
     {
         std::pair<int, int> firstTarget = findFirstTargetPosition(searchMapData, targetChars, m_selectedDirection);
@@ -6352,14 +6159,13 @@ bool MapTest::startMapPathPlanning()
 
     if (!advanceSearchStep())
     {
-        qDebug() << "没有找到目标字符的路径。";
         return false;
     }
 
     if (!m_pTimer->isActive())
     {
         setMapFunctionPanelRunning(true);
-        m_pTimer->start(100);
+        m_pTimer->start(MapStepIntervalMs);
     }
     return true;
 }
@@ -6393,7 +6199,6 @@ void MapTest::handleTimeout()
     {
         m_pTimer->stop();
         setMapFunctionPanelRunning(false);
-        qDebug() << "没有找到目标字符的路径。";
         return;
     }
 }
@@ -6423,15 +6228,11 @@ bool MapTest::advanceSearchStep()
         processCurrentCellIfChecked();
     }
 
-    QPoint nextDisplayCell;
-    bool isPickupCell = false;
-    if (!moveToNextPlannedCell(&nextDisplayCell, &isPickupCell))
+    if (!moveToNextPlannedCell())
     {
         refreshMapViews();
         return false;
     }
 
-    qDebug() << "下一步位置：" << nextDisplayCell.y() << ", " << nextDisplayCell.x()
-             << "是否吸取点：" << isPickupCell;
     return true;
 }

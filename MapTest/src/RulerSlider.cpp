@@ -1,9 +1,21 @@
-﻿#include "rulerslider.h"
+﻿#include "RulerSlider.h"
 #include "QPainter"
 #include "math.h"
 
 #include <QEvent>
 #include <QMouseEvent>
+namespace
+{
+// Qt 6 移除了 QMouseEvent::pos()，统一用助手兼容 Qt 5 和 Qt 6。
+QPoint mouseEventPosition(const QMouseEvent* event)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    return event->position().toPoint();
+#else
+    return event->pos();
+#endif
+}
+}
 
 RulerSlider::RulerSlider(Qt::Orientation orientation, QWidget *parent)
     : QSlider(parent), orientation(orientation)
@@ -293,7 +305,7 @@ void RulerSlider::eventPosGetValue(QMouseEvent *ev)
 
     //鼠标光标位置
 
-    double xpos = ev->pos().x();
+    double xpos = mouseEventPosition(ev).x();
 
     if(xpos >=SIDEDISTANCE&&xpos<=width()-SIDEDISTANCER){
 
@@ -312,7 +324,7 @@ void RulerSlider::eventPosGetValue(QMouseEvent *ev)
     else
     {
         double posHeight = height() - SIDEDISTANCER - SIDEDISTANCE;
-           double ypos = ev->pos().y();
+           double ypos = mouseEventPosition(ev).y();
 
            if (ypos >= SIDEDISTANCE && ypos <= height() - SIDEDISTANCER) {
                double posValue = (ypos - SIDEDISTANCE) / posHeight;
@@ -468,7 +480,7 @@ void RulerSlider::mouseFilterEvent(QMouseEvent *event)
 {
     //鼠标光标位置
 
-    double xpos = event->pos().x();
+    double xpos = mouseEventPosition(event).x();
 
     if(xpos >=SIDEDISTANCE&&xpos<=width()-SIDEDISTANCER){
 
@@ -518,7 +530,7 @@ void RulerSlider::mouseFilterEvent(QMouseEvent *event)
 }
     else
     {
-        double ypos = event->pos().y();
+        double ypos = mouseEventPosition(event).y();
 
         if (ypos >= SIDEDISTANCE && ypos <= height() - SIDEDISTANCER) {
                 if (mouseIsClick) {

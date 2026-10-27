@@ -1,0 +1,61 @@
+# Build output
+build/
+build-*/
+bin/
+debug/
+release/
+obj/
+*.obj
+*.o
+*.lib
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.exe
+*.app
+*.so
+*.dylib
+
+# Qt / qmake
+Makefile
+Makefile.Debug
+Makefile.Release
+.qmake.stash
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+*.pro.user
+*.pro.user.*
+*.qtvscr
+*.autosave
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+compile_commands.json
+
+# Visual Studio / IDE
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sdf
+*.opensdf
+*.suo
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local screenshots / scratch files
+demo.png

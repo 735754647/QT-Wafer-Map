@@ -3296,7 +3296,9 @@ bool WaferMapWindow::loadExcelMapFile()
     }
 
     QString sheetPath = resolveXlsxWorksheetPath(zipReader, m_excelPageIndex);
-    QByteArray sheetXml = sheetPath.isEmpty() ? QByteArray() : zipReader.fileData(sheetPath);
+    QByteArray sheetXml = sheetPath.isEmpty()
+            ? QByteArray()
+            : readZipEntryBounded(zipReader, sheetPath, MaxZipEntryBytes);
     if (sheetXml.isEmpty())
     {
         reportLoadError(QStringLiteral("Excel加载"), QStringLiteral("没有找到对应页索引的工作表。"));
